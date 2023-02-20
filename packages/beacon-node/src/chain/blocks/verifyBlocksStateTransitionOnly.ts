@@ -30,8 +30,8 @@ export async function verifyBlocksStateTransitionOnly(
     const {block} = blocks[i];
     const preState = i === 0 ? preState0 : postStates[i - 1];
 
-    // TODO Deneb: Is the best place here to call validateBlobsSidecar()?
-    // TODO Deneb: Gossip may already call validateBlobsSidecar, add some flag to de-dup from here
+    // TODO Deneb: Is the best place here to call validateBlobSidecars()?
+    // TODO Deneb: Gossip may already call validateBlobSidecars, add some flag to de-dup from here
     // TODO Deneb: For sync if this function is expensive, consider adding sleep(0) if metrics show it
 
     // STFN - per_slot_processing() + per_block_processing()

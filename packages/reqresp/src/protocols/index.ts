@@ -1,7 +1,7 @@
-export {BeaconBlockAndBlobsSidecarByRoot} from "./BeaconBlockAndBlobsSidecarByRoot.js";
+export {BlobSidecarsByRange} from "./BlobSidecarsByRange.js";
+export {BlobSidecarsByRoot} from "./BlobSidecarsByRoot.js";
 export {BeaconBlocksByRoot, BeaconBlocksByRootV2} from "./BeaconBlocksByRoot.js";
 export {BeaconBlocksByRange, BeaconBlocksByRangeV2} from "./BeaconBlocksByRange.js";
-export {BlobsSidecarsByRange} from "./BlobsSidecarsByRange.js";
 export {Goodbye} from "./Goodbye.js";
 export {LightClientBootstrap} from "./LightClientBootstrap.js";
 export {LightClientFinalityUpdate} from "./LightClientFinalityUpdate.js";

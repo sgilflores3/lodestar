@@ -17,6 +17,7 @@ import {
   RootHex,
   StringType,
   Wei,
+  deneb,
 } from "@lodestar/types";
 import {ApiClientResponse} from "../../interfaces.js";
 import {HttpStatusCode} from "../../utils/client/httpStatusCode.js";
@@ -209,6 +210,26 @@ export type Api = {
     >
   >;
 
+  getBlob(
+    blockRoot: Root,
+    index: number
+  ): Promise<
+    ApiClientResponse<
+      {[HttpStatusCode.OK]: {data: deneb.BlobSidecar}},
+      HttpStatusCode.BAD_REQUEST | HttpStatusCode.SERVICE_UNAVAILABLE
+    >
+  >;
+
+  getBlindedBlob(
+    blockRoot: Root,
+    index: number
+  ): Promise<
+    ApiClientResponse<
+      {[HttpStatusCode.OK]: {data: deneb.BlindedBlobSidecar}},
+      HttpStatusCode.BAD_REQUEST | HttpStatusCode.SERVICE_UNAVAILABLE
+    >
+  >;
+
   /**
    * Produce an attestation data
    * Requests that the beacon node produce an AttestationData.
@@ -323,6 +344,8 @@ export const routesData: RoutesData<Api> = {
   getSyncCommitteeDuties: {url: "/eth/v1/validator/duties/sync/{epoch}", method: "POST"},
   produceBlock: {url: "/eth/v1/validator/blocks/{slot}", method: "GET"},
   produceBlockV2: {url: "/eth/v2/validator/blocks/{slot}", method: "GET"},
+  getBlob: {url: "/eth/v1/validator/blob/{root}/${index}", method: "GET"},
+  getBlindedBlob: {url: "/eth/v1/validator/blinded_blob/{root}/${index}", method: "GET"},
   produceBlindedBlock: {url: "/eth/v1/validator/blinded_blocks/{slot}", method: "GET"},
   produceAttestationData: {url: "/eth/v1/validator/attestation_data", method: "GET"},
   produceSyncCommitteeContribution: {url: "/eth/v1/validator/sync_committee_contribution", method: "GET"},
@@ -344,6 +367,8 @@ export type ReqTypes = {
   produceBlock: {params: {slot: number}; query: {randao_reveal: string; graffiti: string}};
   produceBlockV2: {params: {slot: number}; query: {randao_reveal: string; graffiti: string}};
   produceBlindedBlock: {params: {slot: number}; query: {randao_reveal: string; graffiti: string}};
+  getBlob: {params: {root: string; index: number}};
+  getBlindedBlob: {params: {root: string; index: number}};
   produceAttestationData: {query: {slot: number; committee_index: number}};
   produceSyncCommitteeContribution: {query: {slot: number; subcommittee_index: number; beacon_block_root: string}};
   getAggregatedAttestation: {query: {attestation_data_root: string; slot: number}};
@@ -389,6 +414,14 @@ export function getReqSerializers(): ReqSerializers<Api, ReqTypes> {
     },
   };
 
+  const getBlobReqSerializer: ReqSerializers<Api, ReqTypes>["getBlob"] = {
+    writeReq: (root, index) => ({
+      params: {root: toHexString(root), index},
+    }),
+    parseReq: ({params}) => [fromHexString(params.root), params.index],
+    schema: {params: {root: Schema.StringRequired, index: Schema.UintRequired}},
+  };
+
   return {
     getAttesterDuties: {
       writeReq: (epoch, indexes) => ({params: {epoch}, body: indexes.map((i) => toU64Str(i))}),
@@ -419,6 +452,9 @@ export function getReqSerializers(): ReqSerializers<Api, ReqTypes> {
     produceBlock: produceBlock,
     produceBlockV2: produceBlock,
     produceBlindedBlock: produceBlock,
+
+    getBlob: getBlobReqSerializer,
+    getBlindedBlob: getBlobReqSerializer,
 
     produceAttestationData: {
       writeReq: (index, slot) => ({query: {slot, committee_index: index}}),
@@ -529,6 +565,8 @@ export function getReturnTypes(): ReturnTypes<Api> {
         return ssz[fork].BlindedBeaconBlock;
       })
     ),
+    getBlob: ContainerData(ssz.deneb.BlobSidecar),
+    getBlindedBlob: ContainerData(ssz.deneb.BlindedBlobSidecar),
     produceAttestationData: ContainerData(ssz.phase0.AttestationData),
     produceSyncCommitteeContribution: ContainerData(ssz.altair.SyncCommitteeContribution),
     getAggregatedAttestation: ContainerData(ssz.phase0.Attestation),

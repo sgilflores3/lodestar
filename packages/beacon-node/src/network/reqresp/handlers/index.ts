@@ -4,8 +4,8 @@ import {IBeaconChain} from "../../../chain/index.js";
 import {IBeaconDb} from "../../../db/index.js";
 import {onBeaconBlocksByRange} from "./beaconBlocksByRange.js";
 import {onBeaconBlocksByRoot} from "./beaconBlocksByRoot.js";
-import {onBeaconBlockAndBlobsSidecarByRoot} from "./beaconBlockAndBlobsSidecarByRoot.js";
-import {onBlobsSidecarsByRange} from "./blobsSidecarsByRange.js";
+import {onBlobSidecarsByRoot} from "./blobSidecarsByRoot.js";
+import {onBlobSidecarsByRange} from "./blobSidecarsByRange.js";
 import {onLightClientBootstrap} from "./lightClientBootstrap.js";
 import {onLightClientFinalityUpdate} from "./lightClientFinalityUpdate.js";
 import {onLightClientOptimisticUpdate} from "./lightClientOptimisticUpdate.js";
@@ -16,8 +16,8 @@ export interface ReqRespHandlers {
   onStatus: HandlerTypeFromMessage<typeof protocols.Status>;
   onBeaconBlocksByRange: HandlerTypeFromMessage<typeof protocols.BeaconBlocksByRange>;
   onBeaconBlocksByRoot: HandlerTypeFromMessage<typeof protocols.BeaconBlocksByRoot>;
-  onBeaconBlockAndBlobsSidecarByRoot: HandlerTypeFromMessage<typeof protocols.BeaconBlockAndBlobsSidecarByRoot>;
-  onBlobsSidecarsByRange: HandlerTypeFromMessage<typeof protocols.BlobsSidecarsByRange>;
+  onBlobSidecarsByRoot: HandlerTypeFromMessage<typeof protocols.BlobSidecarsByRoot>;
+  onBlobSidecarsByRange: HandlerTypeFromMessage<typeof protocols.BlobSidecarsByRange>;
   onLightClientBootstrap: HandlerTypeFromMessage<typeof protocols.LightClientBootstrap>;
   onLightClientUpdatesByRange: HandlerTypeFromMessage<typeof protocols.LightClientUpdatesByRange>;
   onLightClientFinalityUpdate: HandlerTypeFromMessage<typeof protocols.LightClientFinalityUpdate>;
@@ -38,11 +38,11 @@ export function getReqRespHandlers({db, chain}: {db: IBeaconDb; chain: IBeaconCh
     async *onBeaconBlocksByRoot(req) {
       yield* onBeaconBlocksByRoot(req, chain, db);
     },
-    async *onBeaconBlockAndBlobsSidecarByRoot(req) {
-      yield* onBeaconBlockAndBlobsSidecarByRoot(req, chain, db);
+    async *onBlobSidecarsByRoot(req) {
+      yield* onBlobSidecarsByRoot(req, chain, db);
     },
-    async *onBlobsSidecarsByRange(req) {
-      yield* onBlobsSidecarsByRange(req, chain, db);
+    async *onBlobSidecarsByRange(req) {
+      yield* onBlobSidecarsByRange(req, chain, db);
     },
     async *onLightClientBootstrap(req) {
       yield* onLightClientBootstrap(req, chain);

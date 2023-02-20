@@ -14,8 +14,7 @@ import {
   StateArchiveRepository,
   VoluntaryExitRepository,
   BLSToExecutionChangeRepository,
-  BlobsSidecarRepository,
-  BlobsSidecarArchiveRepository,
+  BlobSidecarsRepository,
 } from "../../../src/db/repositories/index.js";
 import {createStubInstance} from "../types.js";
 
@@ -25,8 +24,7 @@ export class StubbedBeaconDb extends BeaconDb {
   block: SinonStubbedInstance<BlockRepository> & BlockRepository;
   blockArchive: SinonStubbedInstance<BlockArchiveRepository> & BlockArchiveRepository;
 
-  blobsSidecar: SinonStubbedInstance<BlobsSidecarRepository> & BlobsSidecarRepository;
-  blobsSidecarArchive: SinonStubbedInstance<BlobsSidecarArchiveRepository> & BlobsSidecarArchiveRepository;
+  blobSidecars: SinonStubbedInstance<BlobSidecarsRepository> & BlobSidecarsRepository;
 
   stateArchive: SinonStubbedInstance<StateArchiveRepository> & StateArchiveRepository;
 
@@ -54,7 +52,6 @@ export class StubbedBeaconDb extends BeaconDb {
 
     this.depositDataRoot = createStubInstance(DepositDataRootRepository);
     this.eth1Data = createStubInstance(Eth1DataRepository);
-    this.blobsSidecar = createStubInstance(BlobsSidecarRepository);
-    this.blobsSidecarArchive = createStubInstance(BlobsSidecarArchiveRepository);
+    this.blobSidecars = createStubInstance(BlobSidecarsRepository);
   }
 }

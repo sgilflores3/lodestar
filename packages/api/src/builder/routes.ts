@@ -46,7 +46,7 @@ export type Api = {
     signedBlock: allForks.SignedBlindedBeaconBlock
   ): Promise<
     ApiClientResponse<
-      {[HttpStatusCode.OK]: {data: allForks.SignedBeaconBlockAndBlobsSidecar; version: ForkName}},
+      {[HttpStatusCode.OK]: {data: allForks.SignedBeaconBlockAndBlobSidecars; version: ForkName}},
       HttpStatusCode.SERVICE_UNAVAILABLE
     >
   >;
@@ -100,8 +100,8 @@ export function getReturnTypes(): ReturnTypes<Api> {
     ),
     submitBlindedBlockV2: WithVersion((fork: ForkName) =>
       isForkBlobs(fork)
-        ? ssz.allForksBlobs[fork].SignedBeaconBlockAndBlobsSidecar
-        : ssz.deneb.SignedBeaconBlockAndBlobsSidecar
+        ? ssz.allForksBlobs[fork].SignedBeaconBlockAndBlobSidecars
+        : ssz.deneb.SignedBeaconBlockAndBlobSidecars
     ),
   };
 }

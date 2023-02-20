@@ -16,18 +16,16 @@ export let ckzg: {
   freeTrustedSetup(): void;
   loadTrustedSetup(filePath: string): void;
   blobToKzgCommitment(blob: Uint8Array): Uint8Array;
-  computeAggregateKzgProof(blobs: Uint8Array[]): Uint8Array;
-  verifyAggregateKzgProof(
-    blobs: Uint8Array[],
-    expectedKzgCommitments: Uint8Array[],
-    kzgAggregatedProof: Uint8Array
-  ): boolean;
+  computeBlobKzgProof(blob: Uint8Array): Uint8Array;
+  verifyBlobKzgProof(blob: Uint8Array, expectedKzgCommitments: Uint8Array, kzgAggregatedProof: Uint8Array): boolean;
+  verifyBlobKzgProofBatch(blobs: Uint8Array[], expectedKzgCommitments: Uint8Array[], kzgProofs: Uint8Array[]): boolean;
 } = {
   freeTrustedSetup: ckzgNotLoaded,
   loadTrustedSetup: ckzgNotLoaded,
   blobToKzgCommitment: ckzgNotLoaded,
-  computeAggregateKzgProof: ckzgNotLoaded,
-  verifyAggregateKzgProof: ckzgNotLoaded,
+  computeBlobKzgProof: ckzgNotLoaded,
+  verifyBlobKzgProof: ckzgNotLoaded,
+  verifyBlobKzgProofBatch: ckzgNotLoaded,
 };
 
 // Global variable __dirname no longer available in ES6 modules.

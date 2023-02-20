@@ -5,7 +5,6 @@ import {ForkSeq} from "@lodestar/params";
 import {computeEpochAtSlot} from "@lodestar/state-transition";
 
 import {BlockInput, getBlockInput} from "../../chain/blocks/types.js";
-import {getEmptyBlobsSidecar} from "../../util/blobs.js";
 import {IReqRespBeaconNode} from "./interface.js";
 
 export async function beaconBlocksMaybeBlobsByRange(
@@ -38,10 +37,10 @@ export async function beaconBlocksMaybeBlobsByRange(
   }
 
   // Only request blobs if they are recent enough
-  else if (computeEpochAtSlot(startSlot) >= currentEpoch - config.MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS) {
-    const [blocks, blobsSidecars] = await Promise.all([
+  else if (computeEpochAtSlot(startSlot) >= currentEpoch - config.MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS) {
+    const [blocks, allBlobSidecars] = await Promise.all([
       reqResp.beaconBlocksByRange(peerId, request),
-      reqResp.blobsSidecarsByRange(peerId, request),
+      reqResp.blobSidecarsByRange(peerId, request),
     ]);
 
     const blockInputs: BlockInput[] = [];
@@ -56,38 +55,39 @@ export async function beaconBlocksMaybeBlobsByRange(
     // Assuming that the blocks and blobs will come in same sorted order
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
-      let blobsSidecar: deneb.BlobsSidecar;
+      const blobSidecars: deneb.BlobSidecar[] = [];
 
-      if (blobsSidecars[blobSideCarIndex]?.beaconBlockSlot === block.message.slot) {
-        blobsSidecar = blobsSidecars[blobSideCarIndex];
+      let blobSidecar: deneb.BlobSidecar;
+      while ((blobSidecar = allBlobSidecars[blobSideCarIndex])?.slot === block.message.slot) {
+        blobSidecars.push(blobSidecar);
         lastMatchedSlot = block.message.slot;
         blobSideCarIndex++;
-      } else {
-        // Quick inspect if the blobsSidecar was expected
-        const blobKzgCommitmentsLen = (block.message.body as deneb.BeaconBlockBody).blobKzgCommitments.length;
-        if (blobKzgCommitmentsLen !== 0) {
-          throw Error(
-            `Missing blobsSidecar for blockSlot=${block.message.slot} with blobKzgCommitmentsLen=${blobKzgCommitmentsLen}`
-          );
-        }
-        blobsSidecar = getEmptyBlobsSidecar(config, block as deneb.SignedBeaconBlock);
       }
-      blockInputs.push(getBlockInput.postDeneb(config, block, blobsSidecar));
+
+      // Quick inspect how many blobSidecars was expected
+      const blobKzgCommitmentsLen = (block.message.body as deneb.BeaconBlockBody).blobKzgCommitments.length;
+      if (blobKzgCommitmentsLen !== blobSidecars.length) {
+        throw Error(
+          `Missing blobSidecars for blockSlot=${block.message.slot} with blobKzgCommitmentsLen=${blobKzgCommitmentsLen} blobSidecars=${blobSidecars.length}`
+        );
+      }
+
+      blockInputs.push(getBlockInput.postDeneb(config, block, blobSidecars));
     }
 
     // If there are still unconsumed blobs this means that the response was inconsistent
     // and matching was wrong and hence we should throw error
     if (
-      blobsSidecars[blobSideCarIndex] !== undefined &&
+      allBlobSidecars[blobSideCarIndex] !== undefined &&
       // If there are no blobs, the blobs request can give 1 block outside the requested range
-      blobsSidecars[blobSideCarIndex].beaconBlockSlot <= endSlot
+      allBlobSidecars[blobSideCarIndex].slot <= endSlot
     ) {
       throw Error(
-        `Unmatched blobsSidecars, blocks=${blocks.length}, blobs=${
-          blobsSidecars.length
-        } lastMatchedSlot=${lastMatchedSlot}, pending blobsSidecars slots=${blobsSidecars
+        `Unmatched blobSidecars, blocks=${blocks.length}, blobs=${
+          allBlobSidecars.length
+        } lastMatchedSlot=${lastMatchedSlot}, pending blobsSidecars slots=${allBlobSidecars
           .slice(blobSideCarIndex)
-          .map((blb) => blb.beaconBlockSlot)}`
+          .map((blb) => blb.slot)}`
       );
     }
     return blockInputs;

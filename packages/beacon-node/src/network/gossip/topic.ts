@@ -6,6 +6,7 @@ import {
   ForkSeq,
   SYNC_COMMITTEE_SUBNET_COUNT,
   isForkLightClient,
+  MAX_BLOBS_PER_BLOCK,
 } from "@lodestar/params";
 
 import {GossipEncoding, GossipTopic, GossipType, GossipTopicTypeMap} from "./interface.js";
@@ -59,7 +60,6 @@ export function stringifyGossipTopic(forkDigestContext: ForkDigestContext, topic
 function stringifyGossipTopicType(topic: GossipTopic): string {
   switch (topic.type) {
     case GossipType.beacon_block:
-    case GossipType.beacon_block_and_blobs_sidecar:
     case GossipType.beacon_aggregate_and_proof:
     case GossipType.voluntary_exit:
     case GossipType.proposer_slashing:
@@ -72,6 +72,8 @@ function stringifyGossipTopicType(topic: GossipTopic): string {
     case GossipType.beacon_attestation:
     case GossipType.sync_committee:
       return `${topic.type}_${topic.subnet}`;
+    case GossipType.blob_sidecar:
+      return `${topic.type}_${topic.index}`;
   }
 }
 
@@ -81,8 +83,8 @@ export function getGossipSSZType(topic: GossipTopic) {
     case GossipType.beacon_block:
       // beacon_block is updated in altair to support the updated SignedBeaconBlock type
       return ssz[topic.fork].SignedBeaconBlock;
-    case GossipType.beacon_block_and_blobs_sidecar:
-      return ssz.deneb.SignedBeaconBlockAndBlobsSidecar;
+    case GossipType.blob_sidecar:
+      return ssz.deneb.SignedBlobSidecar;
     case GossipType.beacon_aggregate_and_proof:
       return ssz.phase0.SignedAggregateAndProof;
     case GossipType.beacon_attestation:
@@ -136,7 +138,6 @@ export function parseGossipTopic(forkDigestContext: ForkDigestContext, topicStr:
     // Inline-d the parseGossipTopicType() function since spreading the resulting object x4 the time to parse a topicStr
     switch (gossipTypeStr) {
       case GossipType.beacon_block:
-      case GossipType.beacon_block_and_blobs_sidecar:
       case GossipType.beacon_aggregate_and_proof:
       case GossipType.voluntary_exit:
       case GossipType.proposer_slashing:
@@ -155,6 +156,13 @@ export function parseGossipTopic(forkDigestContext: ForkDigestContext, topicStr:
         if (Number.isNaN(subnet)) throw Error(`Subnet ${subnetStr} is not a number`);
         return {type: gossipType, subnet, fork, encoding};
       }
+    }
+
+    if (gossipTypeStr.startsWith(GossipType.blob_sidecar)) {
+      const indexStr = gossipTypeStr.slice(GossipType.blob_sidecar.length + 1); // +1 for '_' concatenating the topic name and the index
+      const index = parseInt(indexStr, 10);
+      if (Number.isNaN(index)) throw Error(`index ${indexStr} is not a number`);
+      return {type: GossipType.blob_sidecar, index, fork, encoding};
     }
 
     throw Error(`Unknown gossip type ${gossipTypeStr}`);
@@ -178,13 +186,14 @@ export function getCoreTopicsAtFork(
     {type: GossipType.voluntary_exit},
     {type: GossipType.proposer_slashing},
     {type: GossipType.attester_slashing},
+    {type: GossipType.beacon_block},
   ];
 
-  // After Deneb only track beacon_block_and_blobs_sidecar topic
-  if (ForkSeq[fork] < ForkSeq.deneb) {
-    topics.push({type: GossipType.beacon_block});
-  } else {
-    topics.push({type: GossipType.beacon_block_and_blobs_sidecar});
+  // deneb
+  if (ForkSeq[fork] >= ForkSeq.deneb) {
+    for (let index = 0; index < MAX_BLOBS_PER_BLOCK; index++) {
+      topics.push({type: GossipType.blob_sidecar, index});
+    }
   }
 
   // capella

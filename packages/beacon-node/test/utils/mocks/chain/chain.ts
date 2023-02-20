@@ -106,7 +106,8 @@ export class MockBeaconChain implements IBeaconChain {
   private readonly state: CachedBeaconStateAllForks;
   private abortController: AbortController;
 
-  readonly producedBlobsSidecarCache = new Map<RootHex, deneb.BlobsSidecar>();
+  readonly producedBlobSidecarsCache = new Map<RootHex, {blobSidecars: deneb.BlobSidecars; slot: Slot}>();
+  readonly producedBlindedBlobSidecarsCache = new Map<RootHex, {blobSidecars: deneb.BlindedBlobSidecars; slot: Slot}>();
 
   constructor({genesisTime, chainId, networkId, state, config}: MockChainParams) {
     this.logger = testLogger();
@@ -183,7 +184,7 @@ export class MockBeaconChain implements IBeaconChain {
     throw Error("Not implemented");
   }
 
-  getBlobsSidecar(): never {
+  getBlobSidecars(): never {
     throw Error("Not implemented");
   }
 

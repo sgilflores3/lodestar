@@ -2,9 +2,8 @@ import {fromHexString} from "@chainsafe/ssz";
 import {Epoch, Slot} from "@lodestar/types";
 import {IForkChoice} from "@lodestar/fork-choice";
 import {Logger, toHex} from "@lodestar/utils";
-import {ForkSeq, SLOTS_PER_EPOCH} from "@lodestar/params";
-import {computeEpochAtSlot, computeStartSlotAtEpoch} from "@lodestar/state-transition";
-import {KeyValue} from "@lodestar/db";
+import {SLOTS_PER_EPOCH} from "@lodestar/params";
+import {computeEpochAtSlot} from "@lodestar/state-transition";
 import {ChainForkConfig} from "@lodestar/config";
 import {IBeaconDb} from "../../db/index.js";
 import {BlockArchiveBatchPutBinaryItem} from "../../db/repositories/index.js";
@@ -33,8 +32,7 @@ export async function archiveBlocks(
   forkChoice: IForkChoice,
   lightclientServer: LightClientServer,
   logger: Logger,
-  finalizedCheckpoint: {rootHex: string; epoch: Epoch},
-  currentEpoch: Epoch
+  finalizedCheckpoint: {rootHex: string; epoch: Epoch}
 ): Promise<void> {
   // Use fork choice to determine the blocks to archive and delete
   const finalizedCanonicalBlocks = forkChoice.getAllAncestorBlocks(finalizedCheckpoint.rootHex);
@@ -57,8 +55,8 @@ export async function archiveBlocks(
     });
 
     if (finalizedPostDeneb) {
-      await migrateBlobsSidecarFromHotToColdDb(config, db, finalizedCanonicalBlockRoots);
-      logger.verbose("Migrated blobsSidecar from hot DB to cold DB");
+      await pruneBlobSidecarsFromHotDb(config, db, finalizedCanonicalBlockRoots);
+      logger.verbose("Migrated blobSidecars from hot DB to cold DB");
     }
   }
 
@@ -73,25 +71,8 @@ export async function archiveBlocks(
     });
 
     if (finalizedPostDeneb) {
-      await db.blobsSidecar.batchDelete(nonCanonicalBlockRoots);
+      await db.blobSidecars.batchDelete(nonCanonicalBlockRoots);
       logger.verbose("Deleted non canonical blobsSider from hot DB");
-    }
-  }
-
-  // Delete expired blobs
-  // Keep only `[max(GENESIS_EPOCH, current_epoch - MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS), current_epoch]`
-  if (finalizedPostDeneb) {
-    const blobsSidecarMinEpoch = currentEpoch - config.MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS;
-    if (blobsSidecarMinEpoch >= config.DENEB_FORK_EPOCH) {
-      const slotsToDelete = await db.blobsSidecarArchive.keys({lt: computeStartSlotAtEpoch(blobsSidecarMinEpoch)});
-      if (slotsToDelete.length > 0) {
-        await db.blobsSidecarArchive.batchDelete(slotsToDelete);
-        logger.verbose(
-          `blobsSidecar prune: batchDelete range ${slotsToDelete[0]}..${slotsToDelete[slotsToDelete.length - 1]}`
-        );
-      } else {
-        logger.verbose(`blobsSidecar prune: no entries before epoch ${blobsSidecarMinEpoch}`);
-      }
     }
   }
 
@@ -147,7 +128,7 @@ async function migrateBlocksFromHotToColdDb(db: IBeaconDb, blocks: BlockRootSlot
   }
 }
 
-async function migrateBlobsSidecarFromHotToColdDb(
+async function pruneBlobSidecarsFromHotDb(
   config: ChainForkConfig,
   db: IBeaconDb,
   blocks: BlockRootSlot[]
@@ -156,27 +137,9 @@ async function migrateBlobsSidecarFromHotToColdDb(
     const toIdx = Math.min(i + BLOB_SIDECAR_BATCH_SIZE, blocks.length);
     const canonicalBlocks = blocks.slice(i, toIdx);
 
-    // processCanonicalBlocks
+    // simply delete from hotdb
     if (canonicalBlocks.length === 0) return;
-
-    // load Buffer instead of ssz deserialized to improve performance
-    const canonicalBlobsSidecarEntries: KeyValue<Slot, Uint8Array>[] = await Promise.all(
-      canonicalBlocks
-        .filter((block) => config.getForkSeq(block.slot) >= ForkSeq.deneb)
-        .map(async (block) => {
-          const bytes = await db.blobsSidecar.getBinary(block.root);
-          if (!bytes) {
-            throw Error(`No blobsSidecar found for slot ${block.slot} root ${toHex(block.root)}`);
-          }
-          return {key: block.slot, value: bytes};
-        })
-    );
-
-    // put to blockArchive db and delete block db
-    await Promise.all([
-      db.blobsSidecarArchive.batchPutBinary(canonicalBlobsSidecarEntries),
-      db.blobsSidecar.batchDelete(canonicalBlocks.map((block) => block.root)),
-    ]);
+    await db.blobSidecars.batchDelete(canonicalBlocks.map((block) => block.root));
   }
 }
 

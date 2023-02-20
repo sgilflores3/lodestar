@@ -28,6 +28,6 @@ export const testData: GenericServerTestCases<Api> = {
   },
   submitBlindedBlockV2: {
     args: [ssz.deneb.SignedBlindedBeaconBlock.defaultValue()],
-    res: {version: ForkName.deneb, data: ssz.deneb.SignedBeaconBlockAndBlobsSidecar.defaultValue()},
+    res: {version: ForkName.deneb, data: ssz.deneb.SignedBeaconBlockAndBlobSidecars.defaultValue()},
   },
 };

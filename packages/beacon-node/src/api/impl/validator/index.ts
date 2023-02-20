@@ -272,6 +272,27 @@ export function getValidatorApi({
     produceBlockV2: produceBlock,
     produceBlindedBlock,
 
+    async getBlob(blockRoot, index) {
+      const blockRootHex = toHex(blockRoot);
+      const blob = (chain.producedBlobSidecarsCache.get(blockRootHex)?.blobSidecars ?? []).slice(index, index + 1)[0];
+      if (blob === undefined) {
+        throw Error(`Blob not found for blockRoot=${blockRootHex} index=${index}`);
+      }
+      return {data: blob};
+    },
+
+    async getBlindedBlob(blockRoot, index) {
+      const blockRootHex = toHex(blockRoot);
+      const blindedBlob = (chain.producedBlindedBlobSidecarsCache.get(blockRootHex)?.blobSidecars ?? []).slice(
+        index,
+        index + 1
+      )[0];
+      if (blindedBlob === undefined) {
+        throw Error(`Blob not found for blockRoot=${blockRootHex} index=${index}`);
+      }
+      return {data: blindedBlob};
+    },
+
     async produceAttestationData(committeeIndex, slot) {
       notWhileSyncing();
 

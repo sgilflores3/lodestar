@@ -81,6 +81,5 @@ export const chainConfig: ChainConfig = {
   // Blobs
   // ---------------------------------------------------------------
   // https://github.com/ethereum/consensus-specs/blob/dev/specs/eip4844/p2p-interface.md#configuration
-  MAX_REQUEST_BLOBS_SIDECARS: 128,
-  MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS: 4096,
+  MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS: 4096,
 };

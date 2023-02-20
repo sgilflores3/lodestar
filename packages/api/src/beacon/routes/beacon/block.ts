@@ -187,17 +187,42 @@ export type Api = {
     >
   >;
   /**
-   * Get block BlobsSidecar
-   * Retrieves BlobsSidecar included in requested block.
+   * Get block BlobSidecar
+   * Retrieves BlobSidecar included in requested block.
    * @param blockId Block identifier.
    * Can be one of: "head" (canonical head in node's view), "genesis", "finalized", \<slot\>, \<hex encoded blockRoot with 0x prefix\>.
    */
-  getBlobsSidecar(
+  getBlobSidecars(
     blockId: BlockId
   ): Promise<
     ApiClientResponse<{
-      [HttpStatusCode.OK]: {executionOptimistic: ExecutionOptimistic; data: deneb.BlobsSidecar};
+      [HttpStatusCode.OK]: {executionOptimistic: ExecutionOptimistic; data: deneb.BlobSidecars};
     }>
+  >;
+  /**
+   * Publish a signed blob.
+   */
+  publishBlob(
+    blob: deneb.SignedBlobSidecar
+  ): Promise<
+    ApiClientResponse<
+      {
+        [HttpStatusCode.OK]: void;
+        [HttpStatusCode.ACCEPTED]: void;
+      },
+      HttpStatusCode.BAD_REQUEST | HttpStatusCode.SERVICE_UNAVAILABLE
+    >
+  >;
+  publishBlindedBlob(
+    blob: deneb.SignedBlindedBlobSidecar
+  ): Promise<
+    ApiClientResponse<
+      {
+        [HttpStatusCode.OK]: void;
+        [HttpStatusCode.ACCEPTED]: void;
+      },
+      HttpStatusCode.BAD_REQUEST | HttpStatusCode.SERVICE_UNAVAILABLE
+    >
   >;
 };
 
@@ -213,7 +238,9 @@ export const routesData: RoutesData<Api> = {
   getBlockRoot: {url: "/eth/v1/beacon/blocks/{block_id}/root", method: "GET"},
   publishBlock: {url: "/eth/v1/beacon/blocks", method: "POST"},
   publishBlindedBlock: {url: "/eth/v1/beacon/blinded_blocks", method: "POST"},
-  getBlobsSidecar: {url: "/eth/v1/beacon/blobs_sidecars/{block_id}", method: "GET"},
+  getBlobSidecars: {url: "/eth/v1/beacon/blob_sidecars/{block_id}", method: "GET"},
+  publishBlob: {url: "/eth/v1/beacon/blob_sidecars", method: "POST"},
+  publishBlindedBlob: {url: "/eth/v1/beacon/blinded_blob_sidecars", method: "POST"},
 };
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -229,7 +256,9 @@ export type ReqTypes = {
   getBlockRoot: BlockIdOnlyReq;
   publishBlock: {body: unknown};
   publishBlindedBlock: {body: unknown};
-  getBlobsSidecar: BlockIdOnlyReq;
+  getBlobSidecars: BlockIdOnlyReq;
+  publishBlob: {body: unknown};
+  publishBlindedBlob: {body: unknown};
 };
 
 export function getReqSerializers(config: ChainForkConfig): ReqSerializers<Api, ReqTypes> {
@@ -272,7 +301,9 @@ export function getReqSerializers(config: ChainForkConfig): ReqSerializers<Api, 
     getBlockRoot: blockIdOnlyReq,
     publishBlock: reqOnlyBody(AllForksSignedBeaconBlock, Schema.Object),
     publishBlindedBlock: reqOnlyBody(AllForksSignedBlindedBeaconBlock, Schema.Object),
-    getBlobsSidecar: blockIdOnlyReq,
+    getBlobSidecars: blockIdOnlyReq,
+    publishBlob: reqOnlyBody(ssz.deneb.SignedBlobSidecar, Schema.Object),
+    publishBlindedBlob: reqOnlyBody(ssz.deneb.SignedBlindedBlobSidecar, Schema.Object),
   };
 }
 
@@ -294,6 +325,6 @@ export function getReturnTypes(): ReturnTypes<Api> {
     getBlockHeader: ContainerDataExecutionOptimistic(BeaconHeaderResType),
     getBlockHeaders: ContainerDataExecutionOptimistic(ArrayOf(BeaconHeaderResType)),
     getBlockRoot: ContainerDataExecutionOptimistic(RootContainer),
-    getBlobsSidecar: ContainerDataExecutionOptimistic(ssz.deneb.BlobsSidecar),
+    getBlobSidecars: ContainerDataExecutionOptimistic(ssz.deneb.BlobSidecars),
   };
 }

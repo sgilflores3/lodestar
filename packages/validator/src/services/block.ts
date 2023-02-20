@@ -8,6 +8,8 @@ import {
   isBlindedBeaconBlock,
   Wei,
   BlockSource,
+  isBlindedBlobSidecar,
+  deneb,
 } from "@lodestar/types";
 import {ChainForkConfig} from "@lodestar/config";
 import {ForkName} from "@lodestar/params";
@@ -116,11 +118,22 @@ export class BlockProposingService {
       this.logger.debug("Produced block", {...debugLogCtx, ...block.debugLogCtx});
       this.metrics?.blocksProduced.inc();
 
-      const signedBlock = await this.validatorStore.signBlock(pubkey, block.data, slot);
+      const signedPromises: Promise<void>[] = [];
+      signedPromises.push(
+        this.validatorStore.signBlock(pubkey, block.data, slot).then((signedBlock) => {
+          this.metrics?.proposerStepCallPublishBlock.observe(this.clock.secFromSlot(slot));
+          return this.publishBlockWrapper(signedBlock);
+        })
+      );
+      for (const blob of block.blobs ?? []) {
+        signedPromises.push(
+          this.validatorStore.signBlob(pubkey, blob, slot).then((signedBlob) => {
+            return this.publishBlobWrapper(signedBlob);
+          })
+        );
+      }
 
-      this.metrics?.proposerStepCallPublishBlock.observe(this.clock.secFromSlot(slot));
-
-      await this.publishBlockWrapper(signedBlock).catch((e: Error) => {
+      await Promise.all(signedPromises).catch((e: Error) => {
         this.metrics?.blockProposingErrors.inc({error: "publish"});
         throw extendError(e, "Failed to publish block");
       });
@@ -139,12 +152,24 @@ export class BlockProposingService {
     );
   };
 
+  private publishBlobWrapper = async (signedBlob: allForks.FullOrBlindedSignedBlobSidecar): Promise<void> => {
+    ApiError.assert(
+      isBlindedBlobSidecar(signedBlob.message)
+        ? await this.api.beacon.publishBlindedBlob(signedBlob as deneb.SignedBlindedBlobSidecar)
+        : await this.api.beacon.publishBlob(signedBlob as deneb.SignedBlobSidecar)
+    );
+  };
+
   private produceBlockWrapper = async (
     slot: Slot,
     randaoReveal: BLSSignature,
     graffiti: string,
     {expectedFeeRecipient, strictFeeRecipientCheck, isBuilderEnabled, builderSelection}: ProduceBlockOpts
-  ): Promise<{data: allForks.FullOrBlindedBeaconBlock} & {debugLogCtx: Record<string, string>}> => {
+  ): Promise<
+    {data: allForks.FullOrBlindedBeaconBlock; blobs?: allForks.FullOrBlindedBlobSidecars} & {
+      debugLogCtx: Record<string, string>;
+    }
+  > => {
     // Start calls for building execution and builder blocks
     const blindedBlockPromise = isBuilderEnabled ? this.produceBlindedBlock(slot, randaoReveal, graffiti) : null;
     const fullBlockPromise = this.produceBlock(slot, randaoReveal, graffiti);
@@ -236,10 +261,16 @@ export class BlockProposingService {
   };
 
   private getBlockWithDebugLog(
-    fullOrBlindedBlock: {data: allForks.FullOrBlindedBeaconBlock; blockValue: Wei},
+    fullOrBlindedBlock: {
+      data: allForks.FullOrBlindedBeaconBlock;
+      blockValue: Wei;
+      blobs?: allForks.FullOrBlindedBlobSidecars;
+    },
     source: BlockSource,
     {expectedFeeRecipient, strictFeeRecipientCheck}: {expectedFeeRecipient: string; strictFeeRecipientCheck: boolean}
-  ): {data: allForks.FullOrBlindedBeaconBlock} & {debugLogCtx: Record<string, string>} {
+  ): {data: allForks.FullOrBlindedBeaconBlock; blobs?: allForks.FullOrBlindedBlobSidecars} & {
+    debugLogCtx: Record<string, string>;
+  } {
     const debugLogCtx = {
       source: source,
       // winston logger doesn't like bigint
@@ -266,12 +297,17 @@ export class BlockProposingService {
       transactions !== undefined ? {transactions} : {},
       withdrawals !== undefined ? {withdrawals} : {}
     );
+    Object.assign(debugLogCtx, fullOrBlindedBlock.blobs !== undefined ? {blobs: fullOrBlindedBlock.blobs.length} : {});
 
-    return {...fullOrBlindedBlock, debugLogCtx};
+    return {...fullOrBlindedBlock, blobs: fullOrBlindedBlock.blobs, debugLogCtx};
   }
 
   /** Wrapper around the API's different methods for producing blocks across forks */
-  private produceBlock: ServerApi<Api["validator"]>["produceBlock"] = async (slot, randaoReveal, graffiti) => {
+  private produceBlock: ServerApi<Api["validator"]>["produceBlock"] & {blobs?: deneb.BlobSidecars} = async (
+    slot,
+    randaoReveal,
+    graffiti
+  ) => {
     switch (this.config.getForkName(slot)) {
       case ForkName.phase0: {
         const res = await this.api.validator.produceBlock(slot, randaoReveal, graffiti);
@@ -283,18 +319,58 @@ export class BlockProposingService {
       default: {
         const res = await this.api.validator.produceBlockV2(slot, randaoReveal, graffiti);
         ApiError.assert(res, "Failed to produce block: validator.produceBlockV2");
-        return res.response;
+
+        const {response} = res;
+        const blobKzgCommitmentsLen = (response.data.body as deneb.BeaconBlockBody).blobKzgCommitments?.length ?? 0;
+        let blobs: deneb.BlobSidecars | undefined;
+
+        if (blobKzgCommitmentsLen > 0) {
+          const blockRoot = this.config.getForkTypes(slot).BeaconBlock.hashTreeRoot(response.data);
+          blobs = await Promise.all(
+            Array.from({length: blobKzgCommitmentsLen}, async (_v, i) => {
+              const blobRes = await this.api.validator.getBlob(blockRoot, i);
+              ApiError.assert(blobRes, `Failed to fetch blob=${i} validator.produceBlockV2`);
+              const {
+                response: {data: blob},
+              } = blobRes;
+              return blob;
+            })
+          );
+        } else {
+          blobs = undefined;
+        }
+
+        return {...response, blobs};
       }
     }
   };
 
-  private produceBlindedBlock: ServerApi<Api["validator"]>["produceBlindedBlock"] = async (
-    slot,
-    randaoReveal,
-    graffiti
-  ) => {
+  private produceBlindedBlock: ServerApi<Api["validator"]>["produceBlindedBlock"] & {
+    blobs?: deneb.BlindedBlobSidecars;
+  } = async (slot, randaoReveal, graffiti) => {
     const res = await this.api.validator.produceBlindedBlock(slot, randaoReveal, graffiti);
     ApiError.assert(res, "Failed to produce block: validator.produceBlindedBlock");
-    return res.response;
+
+    const {response} = res;
+    const blobKzgCommitmentsLen = (response.data.body as deneb.BeaconBlockBody).blobKzgCommitments?.length ?? 0;
+    let blobs: deneb.BlindedBlobSidecars | undefined;
+
+    if (blobKzgCommitmentsLen > 0) {
+      const blockRoot = this.config.getBlindedForkTypes(slot).BeaconBlock.hashTreeRoot(response.data);
+      blobs = await Promise.all(
+        Array.from({length: blobKzgCommitmentsLen}, async (_v, i) => {
+          const blobRes = await this.api.validator.getBlindedBlob(blockRoot, i);
+          ApiError.assert(blobRes, `Failed to fetch blindedBlob=${i} validator.produceBlindedBlock`);
+          const {
+            response: {data: blob},
+          } = blobRes;
+          return blob;
+        })
+      );
+    } else {
+      blobs = undefined;
+    }
+
+    return {...response, blobs};
   };
 }

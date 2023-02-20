@@ -9,8 +9,8 @@ export enum ReqRespMethod {
   Metadata = "metadata",
   BeaconBlocksByRange = "beacon_blocks_by_range",
   BeaconBlocksByRoot = "beacon_blocks_by_root",
-  BlobsSidecarsByRange = "blobs_sidecars_by_range",
-  BeaconBlockAndBlobsSidecarByRoot = "beacon_block_and_blobs_sidecar_by_root",
+  BlobSidecarsByRange = "blob_sidecars_by_range",
+  BlobSidecarsByRoot = "blob_sidecars_by_root",
   LightClientBootstrap = "light_client_bootstrap",
   LightClientUpdatesByRange = "light_client_updates_by_range",
   LightClientFinalityUpdate = "light_client_finality_update",
@@ -26,8 +26,8 @@ type RequestBodyByMethod = {
   // Do not matter
   [ReqRespMethod.BeaconBlocksByRange]: unknown;
   [ReqRespMethod.BeaconBlocksByRoot]: unknown;
-  [ReqRespMethod.BlobsSidecarsByRange]: unknown;
-  [ReqRespMethod.BeaconBlockAndBlobsSidecarByRoot]: unknown;
+  [ReqRespMethod.BlobSidecarsByRange]: unknown;
+  [ReqRespMethod.BlobSidecarsByRoot]: unknown;
   [ReqRespMethod.LightClientBootstrap]: unknown;
   [ReqRespMethod.LightClientUpdatesByRange]: unknown;
   [ReqRespMethod.LightClientFinalityUpdate]: unknown;

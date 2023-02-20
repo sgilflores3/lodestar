@@ -47,8 +47,7 @@ export enum Bucket {
 
   index_stateArchiveRootIndex = 26, // State Root -> slot
 
-  allForks_blobsSidecar = 27, // DENEB BeaconBlockRoot -> BlobsSidecar
-  allForks_blobsSidecarArchive = 28, // DENEB BeaconBlockSlot -> BlobsSidecar
+  allForks_blobSidecars = 27, // DENEB BeaconBlockRoot -> BlobsSidecars
 
   // Lightclient server
   // altair_bestUpdatePerCommitteePeriod = 30, // DEPRECATED on v0.32.0

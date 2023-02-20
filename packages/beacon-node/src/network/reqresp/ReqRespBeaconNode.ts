@@ -252,14 +252,11 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     );
   }
 
-  async blobsSidecarsByRange(
-    peerId: PeerId,
-    request: deneb.BlobsSidecarsByRangeRequest
-  ): Promise<deneb.BlobsSidecar[]> {
+  async blobSidecarsByRange(peerId: PeerId, request: deneb.BlobSidecarsByRangeRequest): Promise<deneb.BlobSidecar[]> {
     return collectMaxResponse(
-      this.sendRequest<deneb.BlobsSidecarsByRangeRequest, deneb.BlobsSidecar>(
+      this.sendRequest<deneb.BlobSidecarsByRangeRequest, deneb.BlobSidecar>(
         peerId,
-        ReqRespMethod.BlobsSidecarsByRange,
+        ReqRespMethod.BlobSidecarsByRange,
         [Version.V1],
         request
       ),
@@ -267,14 +264,11 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     );
   }
 
-  async beaconBlockAndBlobsSidecarByRoot(
-    peerId: PeerId,
-    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
-  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
+  async blobSidecarsByRoot(peerId: PeerId, request: deneb.BlobSidecarsByRootRequest): Promise<deneb.BlobSidecar[]> {
     return collectMaxResponse(
-      this.sendRequest<deneb.BeaconBlockAndBlobsSidecarByRootRequest, deneb.SignedBeaconBlockAndBlobsSidecar>(
+      this.sendRequest<deneb.BlobSidecarsByRootRequest, deneb.BlobSidecar>(
         peerId,
-        ReqRespMethod.BeaconBlockAndBlobsSidecarByRoot,
+        ReqRespMethod.BlobSidecarsByRoot,
         [Version.V1],
         request
       ),
@@ -321,11 +315,8 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
 
     if (ForkSeq[fork] >= ForkSeq.deneb) {
       protocols.push(
-        reqRespProtocols.BeaconBlockAndBlobsSidecarByRoot(
-          modules,
-          this.reqRespHandlers.onBeaconBlockAndBlobsSidecarByRoot
-        ),
-        reqRespProtocols.BlobsSidecarsByRange(modules, this.reqRespHandlers.onBlobsSidecarsByRange)
+        reqRespProtocols.BlobSidecarsByRoot(modules, this.reqRespHandlers.onBlobSidecarsByRoot),
+        reqRespProtocols.BlobSidecarsByRange(modules, this.reqRespHandlers.onBlobSidecarsByRange)
       );
     }
 

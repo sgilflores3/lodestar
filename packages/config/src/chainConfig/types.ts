@@ -64,10 +64,8 @@ export type ChainConfig = {
   DEPOSIT_CONTRACT_ADDRESS: Uint8Array;
 
   // DENEB
-  // https://github.com/ethereum/consensus-specs/blob/11a037fd9227e29ee809c9397b09f8cc3383a8c0/specs/eip4844/p2p-interface.md#configuration
-  MAX_REQUEST_BLOBS_SIDECARS: number;
   /** The minimum epoch range over which a node must serve blobs sidecars */
-  MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS: number;
+  MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS: number;
 };
 
 export const chainConfigTypes: SpecTypes<ChainConfig> = {
@@ -122,8 +120,7 @@ export const chainConfigTypes: SpecTypes<ChainConfig> = {
   DEPOSIT_CONTRACT_ADDRESS: "bytes",
 
   // Blobs
-  MAX_REQUEST_BLOBS_SIDECARS: "number",
-  MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS: "number",
+  MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS: "number",
 };
 
 /** Allows values in a Spec file */

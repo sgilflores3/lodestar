@@ -98,4 +98,12 @@ export const testData: GenericServerTestCases<Api> = {
     args: [[ssz.bellatrix.SignedValidatorRegistrationV1.defaultValue()]],
     res: undefined,
   },
+  getBlob: {
+    args: [ZERO_HASH, 0],
+    res: {data: ssz.deneb.BlobSidecar.defaultValue()},
+  },
+  getBlindedBlob: {
+    args: [ZERO_HASH, 0],
+    res: {data: ssz.deneb.BlindedBlobSidecar.defaultValue()},
+  },
 };
