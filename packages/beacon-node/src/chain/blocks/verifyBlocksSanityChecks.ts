@@ -116,7 +116,7 @@ export function verifyBlocksSanityChecks(
 }
 
 function maybeValidateBlobs(
-  config: IChainForkConfig,
+  config: ChainForkConfig,
   blockInput: BlockInput,
   opts: ImportBlockOpts
 ): DataAvailableStatus {
