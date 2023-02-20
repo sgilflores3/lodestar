@@ -5,6 +5,7 @@ export {
   ExecutionStatus,
   MaybeValidExecutionStatus,
   BlockExecution,
+  DataAvailableStatus,
   LVHValidResponse,
   LVHInvalidResponse,
 } from "./protoArray/interface.js";

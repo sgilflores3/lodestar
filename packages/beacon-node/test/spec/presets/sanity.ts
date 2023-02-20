@@ -1,11 +1,5 @@
 import {InputType} from "@lodestar/spec-test-util";
-import {
-  BeaconStateAllForks,
-  DataAvailableStatus,
-  ExecutionPayloadStatus,
-  processSlots,
-  stateTransition,
-} from "@lodestar/state-transition";
+import {BeaconStateAllForks, ExecutionPayloadStatus, processSlots, stateTransition} from "@lodestar/state-transition";
 import {allForks, deneb, ssz} from "@lodestar/types";
 import {ForkName} from "@lodestar/params";
 import {bnToNum} from "@lodestar/utils";
@@ -66,7 +60,6 @@ export const sanityBlocks: TestRunnerFn<SanityBlocksTestCase, BeaconStateAllFork
         wrappedState = stateTransition(wrappedState, signedBlock, {
           // TODO DENEB: Should assume valid and available for this test?
           executionPayloadStatus: ExecutionPayloadStatus.valid,
-          dataAvailableStatus: DataAvailableStatus.available,
           verifyStateRoot: verify,
           verifyProposer: verify,
           verifySignatures: verify,

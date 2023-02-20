@@ -9,7 +9,7 @@ import {processEth1Data} from "./processEth1Data.js";
 import {processOperations} from "./processOperations.js";
 import {processRandao} from "./processRandao.js";
 import {processBlobKzgCommitments} from "./processBlobKzgCommitments.js";
-import {BlockExternalData, DataAvailableStatus} from "./externalData.js";
+import {BlockExternalData} from "./externalData.js";
 import {processWithdrawals} from "./processWithdrawals.js";
 import {ProcessBlockOpts} from "./types.js";
 
@@ -63,18 +63,5 @@ export function processBlock(
 
   if (fork >= ForkSeq.deneb) {
     processBlobKzgCommitments(block.body as deneb.BeaconBlockBody);
-
-    // New in Deneb, note: Can sync optimistically without this condition, see note on `is_data_available`
-    // NOTE: Ommitted and should be verified beforehand
-
-    // assert is_data_available(block.slot, hash_tree_root(block), block.body.blob_kzg_commitments)
-    switch (externalData.dataAvailableStatus) {
-      case DataAvailableStatus.preDeneb:
-        throw Error("dataAvailableStatus preDeneb");
-      case DataAvailableStatus.notAvailable:
-        throw Error("dataAvailableStatus notAvailable");
-      case DataAvailableStatus.available:
-        break; // ok
-    }
   }
 }

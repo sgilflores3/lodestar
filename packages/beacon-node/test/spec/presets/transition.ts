@@ -1,9 +1,4 @@
-import {
-  BeaconStateAllForks,
-  DataAvailableStatus,
-  ExecutionPayloadStatus,
-  stateTransition,
-} from "@lodestar/state-transition";
+import {BeaconStateAllForks, ExecutionPayloadStatus, stateTransition} from "@lodestar/state-transition";
 import {allForks, ssz} from "@lodestar/types";
 import {createChainForkConfig, ChainConfig} from "@lodestar/config";
 import {ForkName} from "@lodestar/params";
@@ -54,7 +49,6 @@ export const transition = (skipTestNames?: string[]): TestRunnerFn<TransitionTes
         state = stateTransition(state, signedBlock, {
           // TODO DENEB: Should assume valid and available for this test?
           executionPayloadStatus: ExecutionPayloadStatus.valid,
-          dataAvailableStatus: DataAvailableStatus.available,
           verifyStateRoot: true,
           verifyProposer: false,
           verifySignatures: false,

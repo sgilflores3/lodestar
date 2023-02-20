@@ -8,7 +8,6 @@ import {
   createEmptyEpochContextImmutableData,
   PubkeyIndexMap,
   ExecutionPayloadStatus,
-  DataAvailableStatus,
 } from "@lodestar/state-transition";
 import {BLSPubkey, phase0} from "@lodestar/types";
 import {stateTransition, processSlots} from "@lodestar/state-transition";
@@ -254,7 +253,6 @@ async function getFinalizedState(
     state = stateTransition(state, block, {
       // Replaying finalized blocks, all data is considered valid
       executionPayloadStatus: ExecutionPayloadStatus.valid,
-      dataAvailableStatus: DataAvailableStatus.available,
       verifyStateRoot: false,
       verifyProposer: false,
       verifySignatures: false,

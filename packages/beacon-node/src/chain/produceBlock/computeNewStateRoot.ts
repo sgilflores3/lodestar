@@ -1,9 +1,4 @@
-import {
-  CachedBeaconStateAllForks,
-  DataAvailableStatus,
-  ExecutionPayloadStatus,
-  stateTransition,
-} from "@lodestar/state-transition";
+import {CachedBeaconStateAllForks, ExecutionPayloadStatus, stateTransition} from "@lodestar/state-transition";
 import {allForks, Root} from "@lodestar/types";
 import {ZERO_HASH} from "../../constants/index.js";
 import {Metrics} from "../../metrics/index.js";
@@ -30,8 +25,6 @@ export function computeNewStateRoot(
     {
       // ExecutionPayloadStatus.valid: Assume payload valid, it has been produced by a trusted EL
       executionPayloadStatus: ExecutionPayloadStatus.valid,
-      // DataAvailableStatus.available: Assume the blobs to be available, have just been produced by trusted EL
-      dataAvailableStatus: DataAvailableStatus.available,
       // verifyStateRoot: false  | the root in the block is zero-ed, it's being computed here
       verifyStateRoot: false,
       // verifyProposer: false   | as the block signature is zero-ed

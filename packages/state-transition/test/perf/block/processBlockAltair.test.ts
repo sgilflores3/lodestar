@@ -10,12 +10,7 @@ import {
   PresetName,
   SYNC_COMMITTEE_SIZE,
 } from "@lodestar/params";
-import {
-  CachedBeaconStateAltair,
-  DataAvailableStatus,
-  ExecutionPayloadStatus,
-  stateTransition,
-} from "../../../src/index.js";
+import {CachedBeaconStateAltair, ExecutionPayloadStatus, stateTransition} from "../../../src/index.js";
 import {cachedStateAltairPopulateCaches, generatePerfTestCachedStateAltair, perfStateId} from "../util.js";
 import {StateBlock} from "../types.js";
 import {BlockAltairOpts, getBlockAltair} from "./util.js";
@@ -126,7 +121,6 @@ describe("altair processBlock", () => {
         fn: ({state, block}) => {
           const postState = stateTransition(state, block, {
             executionPayloadStatus: ExecutionPayloadStatus.valid,
-            dataAvailableStatus: DataAvailableStatus.available,
             verifyProposer: false,
             verifySignatures: false,
             verifyStateRoot: false,

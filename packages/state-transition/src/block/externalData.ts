@@ -13,13 +13,6 @@ export enum ExecutionPayloadStatus {
   valid = "valid",
 }
 
-export enum DataAvailableStatus {
-  preDeneb = "preDeneb",
-  notAvailable = "notAvailable",
-  available = "available",
-}
-
 export interface BlockExternalData {
   executionPayloadStatus: ExecutionPayloadStatus;
-  dataAvailableStatus: DataAvailableStatus;
 }

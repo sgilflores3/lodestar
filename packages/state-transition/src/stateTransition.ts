@@ -21,7 +21,7 @@ import {
 } from "./slot/index.js";
 import {processBlock} from "./block/index.js";
 import {processEpoch} from "./epoch/index.js";
-import {BlockExternalData, DataAvailableStatus, ExecutionPayloadStatus} from "./block/externalData.js";
+import {BlockExternalData, ExecutionPayloadStatus} from "./block/externalData.js";
 import {ProcessBlockOpts} from "./block/types.js";
 
 // Multifork capable state transition
@@ -45,7 +45,6 @@ export function stateTransition(
   options: StateTransitionOpts = {
     // TODO DENEB: Review what default values make sense
     executionPayloadStatus: ExecutionPayloadStatus.valid,
-    dataAvailableStatus: DataAvailableStatus.available,
   },
   metrics?: BeaconStateTransitionMetrics | null
 ): CachedBeaconStateAllForks {

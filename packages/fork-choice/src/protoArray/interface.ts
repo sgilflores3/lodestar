@@ -20,6 +20,12 @@ export enum ExecutionStatus {
   Invalid = "Invalid",
 }
 
+export enum DataAvailableStatus {
+  preDeneb = "preDeneb",
+  notAvailable = "notAvailable",
+  available = "available",
+}
+
 export type LVHValidResponse = {
   executionStatus: ExecutionStatus.Valid;
   latestValidExecHash: RootHex;
