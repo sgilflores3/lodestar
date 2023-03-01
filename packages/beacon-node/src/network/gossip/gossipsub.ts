@@ -11,11 +11,10 @@ import {Logger, Map2d, Map2dArr} from "@lodestar/utils";
 import {computeStartSlotAtEpoch} from "@lodestar/state-transition";
 
 import {Metrics} from "../../metrics/index.js";
-import {Eth2Context} from "../../chain/index.js";
 import {PeersData} from "../peers/peersData.js";
 import {ClientKind} from "../peers/client.js";
 import {GOSSIP_MAX_SIZE, GOSSIP_MAX_SIZE_BELLATRIX} from "../../constants/network.js";
-import {Libp2p} from "../interface.js";
+import {Eth2Context, Libp2p} from "../interface.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {GossipBeaconNode, GossipTopic, GossipTopicMap, GossipType, GossipTypeMap} from "./interface.js";
 import {getGossipSSZType, GossipTopicCache, stringifyGossipTopic, getCoreTopicsAtFork} from "./topic.js";

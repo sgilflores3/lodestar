@@ -32,12 +32,6 @@ import {CheckpointBalancesCache} from "./balancesCache.js";
 import {IChainOptions} from "./options.js";
 import {AssembledBlockType, BlockAttributes, BlockType} from "./produceBlock/produceBlockBody.js";
 
-export type Eth2Context = {
-  activeValidatorCount: number;
-  currentSlot: number;
-  currentEpoch: number;
-};
-
 export {BlockType, AssembledBlockType};
 export {ProposerPreparationData};
 

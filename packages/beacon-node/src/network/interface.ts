@@ -88,3 +88,9 @@ export type PeerDirection = Connection["stat"]["direction"];
 export type PeerStatus = Connection["stat"]["status"];
 
 export type Libp2p = ILibp2p & {connectionManager: ConnectionManager; registrar: Registrar};
+
+export type Eth2Context = {
+  activeValidatorCount: number;
+  currentSlot: number;
+  currentEpoch: number;
+};
