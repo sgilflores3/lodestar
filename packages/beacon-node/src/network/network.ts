@@ -3,10 +3,11 @@ import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger, sleep} from "@lodestar/utils";
-import {ATTESTATION_SUBNET_COUNT, ForkName, ForkSeq, SYNC_COMMITTEE_SUBNET_COUNT} from "@lodestar/params";
+import {ForkName} from "@lodestar/params";
 import {SignableENR} from "@chainsafe/discv5";
+import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {computeEpochAtSlot, computeTimeAtSlot} from "@lodestar/state-transition";
-import {deneb, Epoch, phase0, allForks, altair} from "@lodestar/types";
+import {deneb, Epoch, phase0, allForks, altair, capella} from "@lodestar/types";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {Metrics} from "../metrics/index.js";
@@ -15,16 +16,16 @@ import {BlockInput, BlockInputType} from "../chain/blocks/types.js";
 import {isValidBlsToExecutionChangeForBlockInclusion} from "../chain/opPools/utils.js";
 import {formatNodePeer} from "../api/impl/node/utils.js";
 import {NetworkOptions} from "./options.js";
-import {INetwork, Libp2p} from "./interface.js";
+import {GossipPublishResult, INetwork, Libp2p} from "./interface.js";
 import {ReqRespBeaconNode, ReqRespHandlers, beaconBlocksMaybeBlobsByRange} from "./reqresp/index.js";
 import {beaconBlocksMaybeBlobsByRoot} from "./reqresp/beaconBlocksMaybeBlobsByRoot.js";
 import {
   Eth2Gossipsub,
   GossipHandlers,
-  GossipTopicTypeMap,
   GossipType,
   getCoreTopicsAtFork,
   GossipTopic,
+  GossipTypeMap,
 } from "./gossip/index.js";
 import {MetadataController} from "./metadata.js";
 import {FORK_EPOCH_LOOKAHEAD, getActiveForks} from "./forks.js";
@@ -38,6 +39,12 @@ import {Discv5Worker} from "./discv5/index.js";
 import {createNodeJsLibp2p} from "./nodejs/util.js";
 import {NetworkProcessor} from "./processor/index.js";
 import {PendingGossipsubMessage} from "./processor/types.js";
+import {
+  getGossipSSZType,
+  gossipTopicIgnoreDuplicatePublishError,
+  stringifyGossipTopic,
+  toGossipTopic,
+} from "./gossip/topic.js";
 
 // How many changes to batch cleanup
 const CACHED_BLS_BATCH_CLEANUP_LIMIT = 10;
@@ -76,13 +83,17 @@ export type NetworkInitModules = {
 };
 
 export class Network implements INetwork {
-  events: INetworkEventBus;
-  reqResp: ReqRespBeaconNode;
-  attnetsService: AttnetsService;
-  syncnetsService: SyncnetsService;
-  gossip: Eth2Gossipsub;
-  metadata: MetadataController;
+  // TODO: Make private
+  readonly reqResp: ReqRespBeaconNode;
+  readonly metadata: MetadataController;
+  readonly events: INetworkEventBus;
+  readonly attnetsService: AttnetsService;
+  readonly syncnetsService: SyncnetsService;
   readonly peerRpcScores: IPeerRpcScoreStore;
+
+  // New private additions
+  private readonly gossip: Eth2Gossipsub;
+
   private readonly opts: NetworkOptions;
   private readonly peersData: PeersData;
 
@@ -340,13 +351,13 @@ export class Network implements INetwork {
     return this.peerManager.getConnectedPeerIds().length;
   }
 
-  publishBeaconBlockMaybeBlobs(blockInput: BlockInput): Promise<void> {
+  publishBeaconBlockMaybeBlobs(blockInput: BlockInput): GossipPublishResult {
     switch (blockInput.type) {
       case BlockInputType.preDeneb:
-        return this.gossip.publishBeaconBlock(blockInput.block);
+        return this.publishBeaconBlock(blockInput.block);
 
       case BlockInputType.postDeneb:
-        return this.gossip.publishSignedBeaconBlockAndBlobsSidecar({
+        return this.publishSignedBeaconBlockAndBlobsSidecar({
           beaconBlock: blockInput.block as deneb.SignedBeaconBlock,
           blobsSidecar: blockInput.blobs,
         });
@@ -425,6 +436,122 @@ export class Network implements INetwork {
     return this.subscribedForks.size > 0;
   }
 
+  // Gossip publish
+
+  publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.beaconBlock(this.config, signedBlock), signedBlock);
+  }
+
+  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.signedBeaconBlockAndBlobsSidecar(this.config, item), item);
+  }
+
+  publishBeaconAggregateAndProof(aggregate: phase0.SignedAggregateAndProof): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.beaconAggregateAndProof(this.config, aggregate), aggregate);
+  }
+
+  publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.beaconAttestation(this.config, attestation, subnet), attestation);
+  }
+
+  publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.voluntaryExit(this.config, voluntaryExit), voluntaryExit);
+  }
+
+  publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.blsToExecutionChange(), blsToExecutionChange);
+  }
+
+  publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.proposerSlashing(this.config, proposerSlashing), proposerSlashing);
+  }
+
+  publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.attesterSlashing(this.config, attesterSlashing), attesterSlashing);
+  }
+
+  publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.syncCommitteeSignature(this.config, signature, subnet), signature);
+  }
+
+  publishContributionAndProof(contribution: altair.SignedContributionAndProof): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.contributionAndProof(this.config, contribution), contribution);
+  }
+
+  publishLightClientFinalityUpdate(update: allForks.LightClientFinalityUpdate): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.lightClientFinalityUpdate(this.config, update), update);
+  }
+
+  publishLightClientOptimisticUpdate(update: allForks.LightClientOptimisticUpdate): GossipPublishResult {
+    return this.publishGossipObject(toGossipTopic.lightClientOptimisticUpdate(this.config, update), update);
+  }
+
+  /**
+   * Publish a `GossipObject` on a `GossipTopic`
+   */
+  private async publishGossipObject(topic: GossipTopic, object: GossipTypeMap[GossipType]): GossipPublishResult {
+    const topicStr = stringifyGossipTopic(this.config, topic);
+
+    const sszType = getGossipSSZType(topic);
+    const data = (sszType.serialize as (object: GossipTypeMap[GossipType]) => Uint8Array)(object);
+
+    const opts: PublishOpts = {
+      ignoreDuplicatePublishError: gossipTopicIgnoreDuplicatePublishError[topic.type],
+    };
+
+    // Call worker here
+    const publishResult = await this.gossip.publish(topicStr, data, opts);
+    return publishResult.recipients.length;
+  }
+
+  // ReqResp
+
+  // status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status> {
+  //   return this.reqResp.status(peerId, request);
+  // }
+  // goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void> {
+  //   return this.reqResp.goodbye(peerId, request);
+  // }
+  // ping(peerId: PeerId): Promise<phase0.Ping> {
+  //   return this.reqResp.ping(peerId);
+  // }
+  // metadata(peerId: PeerId): Promise<allForks.Metadata> {
+  //   return this.reqResp.metadata(peerId);
+  // }
+  // beaconBlocksByRange(
+  //   peerId: PeerId,
+  //   request: phase0.BeaconBlocksByRangeRequest
+  // ): Promise<allForks.SignedBeaconBlock[]> {
+  //   return this.reqResp.beaconBlocksByRange(peerId, request);
+  // }
+  // beaconBlocksByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<allForks.SignedBeaconBlock[]> {
+  //   return this.reqResp.beaconBlocksByRoot(peerId, request);
+  // }
+  // blobsSidecarsByRange(peerId: PeerId, request: deneb.BlobsSidecarsByRangeRequest): Promise<deneb.BlobsSidecar[]> {
+  //   return this.reqResp.blobsSidecarsByRange(peerId, request);
+  // }
+  // beaconBlockAndBlobsSidecarByRoot(
+  //   peerId: PeerId,
+  //   request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
+  // ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
+  //   return this.reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request);
+  // }
+  // lightClientBootstrap(peerId: PeerId, request: Uint8Array): Promise<allForks.LightClientBootstrap> {
+  //   return this.reqResp.lightClientBootstrap(peerId, request);
+  // }
+  // lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
+  //   return this.reqResp.lightClientOptimisticUpdate(peerId);
+  // }
+  // lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
+  //   return this.reqResp.lightClientFinalityUpdate(peerId);
+  // }
+  // lightClientUpdatesByRange(
+  //   peerId: PeerId,
+  //   request: altair.LightClientUpdatesByRange
+  // ): Promise<allForks.LightClientUpdate[]> {
+  //   return this.reqResp.lightClientUpdatesByRange(peerId, request);
+  // }
+
   // Debug
 
   async connectToPeer(peer: PeerId, multiaddr: Multiaddr[]): Promise<void> {
@@ -464,6 +591,14 @@ export class Network implements INetwork {
 
   async dumpGossipQueue(gossipType: GossipType): Promise<PendingGossipsubMessage[]> {
     return this.networkProcessor.dumpGossipQueue(gossipType);
+  }
+
+  async dumpMeshPeers(): Promise<Record<string, string[]>> {
+    const meshPeers: Record<string, string[]> = {};
+    for (const topic of this.gossip.getTopics()) {
+      meshPeers[topic] = this.gossip.getMeshPeers(topic);
+    }
+    return meshPeers;
   }
 
   /**
@@ -548,52 +683,6 @@ export class Network implements INetwork {
     }
   };
 
-  /**
-   * De-duplicate logic to pick fork topics between subscribeCoreTopicsAtFork and unsubscribeCoreTopicsAtFork
-   */
-  private coreTopicsAtFork(fork: ForkName): GossipTopicTypeMap[keyof GossipTopicTypeMap][] {
-    // Common topics for all forks
-    const topics: GossipTopicTypeMap[keyof GossipTopicTypeMap][] = [
-      // {type: GossipType.beacon_block}, // Handled below
-      {type: GossipType.beacon_aggregate_and_proof},
-      {type: GossipType.voluntary_exit},
-      {type: GossipType.proposer_slashing},
-      {type: GossipType.attester_slashing},
-    ];
-
-    // After Deneb only track beacon_block_and_blobs_sidecar topic
-    if (ForkSeq[fork] < ForkSeq.deneb) {
-      topics.push({type: GossipType.beacon_block});
-    } else {
-      topics.push({type: GossipType.beacon_block_and_blobs_sidecar});
-    }
-
-    // capella
-    if (ForkSeq[fork] >= ForkSeq.capella) {
-      topics.push({type: GossipType.bls_to_execution_change});
-    }
-
-    // Any fork after altair included
-    if (ForkSeq[fork] >= ForkSeq.altair) {
-      topics.push({type: GossipType.sync_committee_contribution_and_proof});
-      topics.push({type: GossipType.light_client_optimistic_update});
-      topics.push({type: GossipType.light_client_finality_update});
-    }
-
-    if (this.opts.subscribeAllSubnets) {
-      for (let subnet = 0; subnet < ATTESTATION_SUBNET_COUNT; subnet++) {
-        topics.push({type: GossipType.beacon_attestation, subnet});
-      }
-      if (ForkSeq[fork] >= ForkSeq.altair) {
-        for (let subnet = 0; subnet < SYNC_COMMITTEE_SUBNET_COUNT; subnet++) {
-          topics.push({type: GossipType.sync_committee, subnet});
-        }
-      }
-    }
-
-    return topics;
-  }
-
   private async regossipCachedBlsChanges(): Promise<void> {
     let gossipedIndexes = [];
     let includedIndexes = [];
@@ -656,7 +745,7 @@ export class Network implements INetwork {
         // messages SHOULD be broadcast after one-third of slot has transpired
         // https://github.com/ethereum/consensus-specs/blob/dev/specs/altair/light-client/p2p-interface.md#sync-committee
         await this.waitOneThirdOfSlot(finalityUpdate.signatureSlot);
-        return await this.gossip.publishLightClientFinalityUpdate(finalityUpdate);
+        await this.publishLightClientFinalityUpdate(finalityUpdate);
       } catch (e) {
         // Non-mandatory route on most of network as of Oct 2022. May not have found any peers on topic yet
         // Remove once https://github.com/ChainSafe/js-libp2p-gossipsub/issues/367
@@ -675,7 +764,7 @@ export class Network implements INetwork {
         // messages SHOULD be broadcast after one-third of slot has transpired
         // https://github.com/ethereum/consensus-specs/blob/dev/specs/altair/light-client/p2p-interface.md#sync-committee
         await this.waitOneThirdOfSlot(optimisticUpdate.signatureSlot);
-        return await this.gossip.publishLightClientOptimisticUpdate(optimisticUpdate);
+        await this.publishLightClientOptimisticUpdate(optimisticUpdate);
       } catch (e) {
         // Non-mandatory route on most of network as of Oct 2022. May not have found any peers on topic yet
         // Remove once https://github.com/ChainSafe/js-libp2p-gossipsub/issues/367

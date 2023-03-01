@@ -225,7 +225,7 @@ export function getBeaconBlockApi({
             )
           : getBlockInput.preDeneb(config, signedBlock);
 
-      await promiseAllMaybeAsync([
+      await promiseAllMaybeAsync<unknown>([
         // Send the block, regardless of whether or not it is valid. The API
         // specification is very clear that this is the desired behaviour.
         () => network.publishBeaconBlockMaybeBlobs(blockForImport),

@@ -5,14 +5,14 @@ import {Multiaddr} from "@multiformats/multiaddr";
 import {PeerId} from "@libp2p/interface-peer-id";
 import {ConnectionManager} from "@libp2p/interface-connection-manager";
 import {SignableENR} from "@chainsafe/discv5";
-import {altair, phase0} from "@lodestar/types";
+import {allForks, altair, capella, deneb, phase0} from "@lodestar/types";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {routes} from "@lodestar/api";
 import {BlockInput} from "../chain/blocks/types.js";
 import {INetworkEventBus} from "./events.js";
-import {GossipBeaconNode, GossipType} from "./gossip/index.js";
+import {GossipType} from "./gossip/index.js";
 import {PeerAction, PeerScoreStats} from "./peers/index.js";
-import {IReqRespBeaconNode} from "./reqresp/ReqRespBeaconNode.js";
+import {IReqRespBeaconNode} from "./reqresp/interface.js";
 import {CommitteeSubscription} from "./subnets/index.js";
 import {PendingGossipsubMessage} from "./processor/types.js";
 
@@ -21,6 +21,8 @@ export type PeerSearchOptions = {
   count?: number;
 };
 
+export type GossipPublishResult = Promise<number>;
+
 export interface INetwork {
   /** Our network identity */
   peerId: PeerId;
@@ -28,14 +30,13 @@ export interface INetwork {
 
   events: INetworkEventBus;
   reqResp: IReqRespBeaconNode;
-  gossip: GossipBeaconNode;
 
   getEnr(): Promise<SignableENR | undefined>;
   getMetadata(): Promise<altair.Metadata>;
   getConnectedPeers(): PeerId[];
   getConnectedPeerCount(): number;
 
-  publishBeaconBlockMaybeBlobs(signedBlock: BlockInput): Promise<void>;
+  publishBeaconBlockMaybeBlobs(signedBlock: BlockInput): GossipPublishResult;
   beaconBlocksMaybeBlobsByRange(peerId: PeerId, request: phase0.BeaconBlocksByRangeRequest): Promise<BlockInput[]>;
   beaconBlocksMaybeBlobsByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<BlockInput[]>;
 
@@ -51,6 +52,22 @@ export interface INetwork {
   unsubscribeGossipCoreTopics(): Promise<void>;
   isSubscribedToGossipCoreTopics(): boolean;
 
+  // Gossip publish
+  publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): GossipPublishResult;
+  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): GossipPublishResult;
+  publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): GossipPublishResult;
+  publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): GossipPublishResult;
+  publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): GossipPublishResult;
+  publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): GossipPublishResult;
+  publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): GossipPublishResult;
+  publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): GossipPublishResult;
+  publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): GossipPublishResult;
+  publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): GossipPublishResult;
+  publishLightClientFinalityUpdate(lightClientFinalityUpdate: allForks.LightClientFinalityUpdate): GossipPublishResult;
+  publishLightClientOptimisticUpdate(
+    lightClientOptimisitcUpdate: allForks.LightClientOptimisticUpdate
+  ): GossipPublishResult;
+
   // Service
   metrics(): Promise<string>;
   close(): Promise<void>;
@@ -64,6 +81,7 @@ export interface INetwork {
   dumpGossipPeerScoreStats(): Promise<PeerScoreStatsDump>;
   dumpGossipQueue(gossipType: GossipType): Promise<PendingGossipsubMessage[]>;
   dumpDiscv5KadValues(): Promise<string[]>;
+  dumpMeshPeers(): Promise<Record<string, string[]>>;
 }
 
 export type PeerDirection = Connection["stat"]["direction"];

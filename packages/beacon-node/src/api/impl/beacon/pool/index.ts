@@ -66,7 +66,7 @@ export function getBeaconPoolApi({
             );
 
             const insertOutcome = chain.attestationPool.add(attestation);
-            const sentPeers = await network.gossip.publishBeaconAttestation(attestation, subnet);
+            const sentPeers = await network.publishBeaconAttestation(attestation, subnet);
             metrics?.submitUnaggregatedAttestation(seenTimestampSec, indexedAttestation, subnet, sentPeers);
             metrics?.opPool.attestationPoolInsertOutcome.inc({insertOutcome});
           } catch (e) {
@@ -93,19 +93,19 @@ export function getBeaconPoolApi({
     async submitPoolAttesterSlashings(attesterSlashing) {
       await validateGossipAttesterSlashing(chain, attesterSlashing);
       chain.opPool.insertAttesterSlashing(attesterSlashing);
-      await network.gossip.publishAttesterSlashing(attesterSlashing);
+      await network.publishAttesterSlashing(attesterSlashing);
     },
 
     async submitPoolProposerSlashings(proposerSlashing) {
       await validateGossipProposerSlashing(chain, proposerSlashing);
       chain.opPool.insertProposerSlashing(proposerSlashing);
-      await network.gossip.publishProposerSlashing(proposerSlashing);
+      await network.publishProposerSlashing(proposerSlashing);
     },
 
     async submitPoolVoluntaryExit(voluntaryExit) {
       await validateGossipVoluntaryExit(chain, voluntaryExit);
       chain.opPool.insertVoluntaryExit(voluntaryExit);
-      await network.gossip.publishVoluntaryExit(voluntaryExit);
+      await network.publishVoluntaryExit(voluntaryExit);
     },
 
     async submitPoolBlsToExecutionChange(blsToExecutionChanges) {
@@ -123,7 +123,7 @@ export function getBeaconPoolApi({
             );
             chain.opPool.insertBlsToExecutionChange(blsToExecutionChange, preCapella);
             if (!preCapella) {
-              await network.gossip.publishBlsToExecutionChange(blsToExecutionChange);
+              await network.publishBlsToExecutionChange(blsToExecutionChange);
             }
           } catch (e) {
             errors.push(e as Error);
@@ -195,9 +195,7 @@ export function getBeaconPoolApi({
             }
 
             // TODO: Broadcast at once to all topics
-            await Promise.all(
-              subnets.map(async (subnet) => network.gossip.publishSyncCommitteeSignature(signature, subnet))
-            );
+            await Promise.all(subnets.map(async (subnet) => network.publishSyncCommitteeSignature(signature, subnet)));
           } catch (e) {
             // TODO: gossipsub should allow publishing same message to different topics
             // https://github.com/ChainSafe/js-libp2p-gossipsub/issues/272
