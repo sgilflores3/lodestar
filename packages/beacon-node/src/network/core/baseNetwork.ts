@@ -25,6 +25,10 @@ import {getConnectionsMap} from "../util.js";
 import {BeaconClock} from "../../chain/index.js";
 import {ClockEvent} from "../../chain/clock/LocalClock.js";
 import {NetworkInitModules} from "../network.js";
+import {formatNodePeer} from "../../api/impl/node/utils.js";
+import { Registry } from "prom-client";
+import { NetworkEventBus } from "../events.js";
+import { IBaseNetwork } from "./types.js";
 
 type Mods = {
   libp2p: Libp2p;
@@ -33,11 +37,25 @@ type Mods = {
   attnetsService: AttnetsService;
   syncnetsService: SyncnetsService;
   peerManager: PeerManager;
+  peersData: PeersData;
   metadata: MetadataController;
   logger: Logger;
   config: BeaconConfig;
   clock: BeaconClock;
   opts: NetworkOptions;
+};
+
+export type BaseNetworkInit = {
+  opts: NetworkOptions;
+  config: BeaconConfig;
+  peerId: PeerId;
+  peerStoreDir: string;
+  logger: Logger;
+  clock: BeaconClock;
+  metricsRegistry: Registry;
+  reqRespHandlers,
+  activeValidatorCount: number;
+  networkEventBus: NetworkEventBus;
 };
 
 /**
@@ -56,7 +74,7 @@ type Mods = {
  * - PeerManager
  * - NetworkProcessor: Must be in the main thread, depends on chain
  */
-export class BadNameLibp2pWorker {
+export class BaseNetwork implements IBaseNetwork {
   readonly gossip: Eth2Gossipsub;
   readonly reqResp: ReqRespBeaconNode;
 
@@ -65,6 +83,7 @@ export class BadNameLibp2pWorker {
   private readonly attnetsService: AttnetsService;
   private readonly syncnetsService: SyncnetsService;
   private readonly peerManager: PeerManager;
+  private readonly peersData: PeersData;
   // TODO: Review if here is best place, and best architecture
   private readonly metadata: MetadataController;
   private readonly logger: Logger;
@@ -83,6 +102,7 @@ export class BadNameLibp2pWorker {
     this.attnetsService = modules.attnetsService;
     this.syncnetsService = modules.syncnetsService;
     this.peerManager = modules.peerManager;
+    this.peersData = modules.peersData;
     this.metadata = modules.metadata;
     this.logger = modules.logger;
     this.config = modules.config;
@@ -104,7 +124,7 @@ export class BadNameLibp2pWorker {
     reqRespHandlers,
     activeValidatorCount,
     networkEventBus,
-  }: NetworkInitModules): Promise<BadNameLibp2pWorker> {
+  }: BaseNetworkInit): Promise<BaseNetwork> {
     const libp2p = await createNodeJsLibp2p(peerId, opts, {
       peerStoreDir,
       metrics: Boolean(metricsRegistry),
@@ -180,13 +200,14 @@ export class BadNameLibp2pWorker {
     // Initialize ENR with clock's fork
     metadata.upstreamValues(onMetadataSetValue, clock.currentSlot);
 
-    return new BadNameLibp2pWorker({
+    return new BaseNetwork({
       libp2p,
       reqResp,
       gossip,
       attnetsService,
       syncnetsService,
       peerManager,
+      peersData,
       metadata,
       logger,
       config,
@@ -214,10 +235,14 @@ export class BadNameLibp2pWorker {
     this.closed = true;
   }
 
+  async scrapeMetrics(): Promise<string> {
+    throw new Error("TODO");
+  }
+
   /**
    * Request att subnets up `toSlot`. Network will ensure to mantain some peers for each
    */
-  async prepareBeaconCommitteeSubnet(subscriptions: CommitteeSubscription[]): Promise<void> {
+  async prepareBeaconCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
     this.attnetsService.addCommitteeSubscriptions(subscriptions);
     if (subscriptions.length > 0) this.peerManager.onCommitteeSubscriptions();
   }
@@ -231,7 +256,7 @@ export class BadNameLibp2pWorker {
    * Subscribe to all gossip events. Safe to call multiple times
    */
   async subscribeGossipCoreTopics(): Promise<void> {
-    if (!this.isSubscribedToGossipCoreTopics()) {
+    if (!(await this.isSubscribedToGossipCoreTopics())) {
       this.logger.info("Subscribed gossip core topics");
     }
 
@@ -247,6 +272,10 @@ export class BadNameLibp2pWorker {
     for (const fork of this.subscribedForks.values()) {
       this.unsubscribeCoreTopicsAtFork(fork);
     }
+  }
+
+  async isSubscribedToGossipCoreTopics(): Promise<boolean> {
+    return this.subscribedForks.size > 0;
   }
 
   // REST API queries
@@ -271,11 +300,11 @@ export class BadNameLibp2pWorker {
     return getConnectionsMap(this.libp2p.connectionManager);
   }
 
-  getConnectedPeers(): PeerId[] {
+  async getConnectedPeers(): Promise<PeerId[]> {
     return this.peerManager.getConnectedPeerIds();
   }
 
-  getConnectedPeerCount(): number {
+  async getConnectedPeerCount(): Promise<number> {
     return this.peerManager.getConnectedPeerIds().length;
   }
 
@@ -290,33 +319,33 @@ export class BadNameLibp2pWorker {
     await this.libp2p.hangUp(peer);
   }
 
-  dumpPeer(peerIdStr: string): routes.lodestar.LodestarNodePeer | undefined {
+  async dumpPeer(peerIdStr: string): Promise<routes.lodestar.LodestarNodePeer | undefined> {
     const connections = this.getConnectionsByPeer().get(peerIdStr);
     return connections
       ? {...formatNodePeer(peerIdStr, connections), agentVersion: this.peersData.getAgentVersion(peerIdStr)}
       : undefined;
   }
 
-  dumpPeers(): routes.lodestar.LodestarNodePeer[] {
+  async dumpPeers(): Promise<routes.lodestar.LodestarNodePeer[]> {
     return Array.from(this.getConnectionsByPeer().entries()).map(([peerIdStr, connections]) => ({
       ...formatNodePeer(peerIdStr, connections),
       agentVersion: this.peersData.getAgentVersion(peerIdStr),
     }));
   }
 
-  dumpPeerScoreStats(): PeerScoreStats {
+  async dumpPeerScoreStats(): Promise<PeerScoreStats> {
     return this.peerManager.dumpPeerScoreStats();
   }
 
-  dumpGossipPeerScoreStats(): PeerScoreStatsDump {
+  async dumpGossipPeerScoreStats(): Promise<PeerScoreStatsDump> {
     return this.gossip.dumpPeerScoreStats();
   }
 
-  dumpDiscv5KadValues(): string[] {
-    return (await this.discv5?.kadValues())?.map((enr) => enr.encodeTxt()) ?? [];
+  async dumpDiscv5KadValues(): Promise<string[]> {
+    return (await this.peerManager["discovery"]?.discv5?.kadValues())?.map((enr) => enr.encodeTxt()) ?? [];
   }
 
-  dumpMeshPeers(): Record<string, string[]> {
+  async dumpMeshPeers(): Promise<Record<string, string[]>> {
     const meshPeers: Record<string, string[]> = {};
     for (const topic of this.gossip.getTopics()) {
       meshPeers[topic] = this.gossip.getMeshPeers(topic);
@@ -327,7 +356,7 @@ export class BadNameLibp2pWorker {
   /**
    * Handle subscriptions through fork transitions, @see FORK_EPOCH_LOOKAHEAD
    */
-  private onEpoch = (epoch: Epoch): void => {
+  private onEpoch = async (epoch: Epoch): Promise<void> => {
     try {
       // Compute prev and next fork shifted, so next fork is still next at forkEpoch + FORK_EPOCH_LOOKAHEAD
       const activeForks = getActiveForks(this.config, epoch);
@@ -341,7 +370,7 @@ export class BadNameLibp2pWorker {
           // Before fork transition
           if (epoch === forkEpoch - FORK_EPOCH_LOOKAHEAD) {
             // Don't subscribe to new fork if the node is not subscribed to any topic
-            if (this.isSubscribedToGossipCoreTopics()) {
+            if (await this.isSubscribedToGossipCoreTopics()) {
               this.subscribeCoreTopicsAtFork(nextFork);
               this.logger.info("Subscribing gossip topics before fork", {nextFork});
             } else {
@@ -405,9 +434,5 @@ export class BadNameLibp2pWorker {
     for (const topic of getCoreTopicsAtFork(fork, {subscribeAllSubnets})) {
       this.gossip.unsubscribeTopic({...topic, fork});
     }
-  }
-
-  private isSubscribedToGossipCoreTopics(): boolean {
-    return this.subscribedForks.size > 0;
   }
 }

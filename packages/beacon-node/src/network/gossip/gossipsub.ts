@@ -36,6 +36,12 @@ const GOSSIPSUB_HEARTBEAT_INTERVAL = 0.7 * 1000;
 
 const MAX_OUTBOUND_BUFFER_SIZE = 2 ** 24; // 16MB
 
+export type Eth2Context = {
+  activeValidatorCount: number;
+  currentSlot: number;
+  currentEpoch: number;
+};
+
 export type Eth2GossipsubModules = {
   config: BeaconConfig;
   libp2p: Libp2p;

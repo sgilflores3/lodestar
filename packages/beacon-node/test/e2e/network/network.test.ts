@@ -185,7 +185,7 @@ describe("network", function () {
     //   return [enrB];
     // };
 
-    await netA.prepareBeaconCommitteeSubnet([subscription]);
+    await netA.prepareBeaconCommitteeSubnets([subscription]);
     await connected;
 
     expect(netA.getConnectionsByPeer().has(netB.peerId.toString())).to.be.equal(

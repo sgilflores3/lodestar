@@ -11,9 +11,8 @@ import {BeaconConfig, chainConfigToJson} from "@lodestar/config";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
 import {PeerScoreStats} from "../peers/index.js";
-import {ILibp2pWorkerWrapper} from "../interface.js";
 import {NetworkOptions} from "../options.js";
-import {Libp2pWorkerApi, Libp2pWorkerData} from "./types.js";
+import {NetworkWorkerApi, NetworkWorkerData, NetworkCore} from "./types.js";
 
 export type Libp2pkWorkerWrapperInitModules = {
   opts: NetworkOptions;
@@ -25,16 +24,19 @@ export type Libp2pkWorkerWrapperInitModules = {
 };
 
 type Libp2pkWorkerWrapperModules = Libp2pkWorkerWrapperInitModules & {
-  workerApi: Libp2pWorkerApi;
+  workerApi: NetworkWorkerApi;
 };
 
-export class Libp2pkWorkerWrapper implements ILibp2pWorkerWrapper {
+/**
+ * NetworkCore implementation using a Worker thread
+ */
+export class WorkerNetworkCore implements NetworkCore {
   constructor(private readonly modules: Libp2pkWorkerWrapperModules) {}
 
-  static async init(modules: Libp2pkWorkerWrapperInitModules): Promise<Libp2pkWorkerWrapper> {
+  static async init(modules: Libp2pkWorkerWrapperInitModules): Promise<WorkerNetworkCore> {
     const {opts, config, genesisTime, peerId, events} = modules;
 
-    const workerData: Libp2pWorkerData = {
+    const workerData: NetworkWorkerData = {
       opts,
       chainConfigJson: chainConfigToJson(config),
       genesisValidatorsRoot: config.genesisValidatorsRoot,
@@ -48,7 +50,7 @@ export class Libp2pkWorkerWrapper implements ILibp2pWorkerWrapper {
 
     const worker = new Worker("./worker.js", {workerData} as ConstructorParameters<typeof Worker>[1]);
 
-    const workerApi = await spawn<Libp2pWorkerApi>(worker, {
+    const workerApi = await spawn<NetworkWorkerApi>(worker, {
       // A Lodestar Node may do very expensive task at start blocking the event loop and causing
       // the initialization to timeout. The number below is big enough to almost disable the timeout
       timeout: 5 * 60 * 1000,
@@ -56,7 +58,7 @@ export class Libp2pkWorkerWrapper implements ILibp2pWorkerWrapper {
 
     workerApi.pendingGossipsubMessage().subscribe((data) => events.emit(NetworkEvent.pendingGossipsubMessage, data));
 
-    return new Libp2pkWorkerWrapper({
+    return new WorkerNetworkCore({
       ...modules,
       workerApi,
     });
@@ -80,8 +82,8 @@ export class Libp2pkWorkerWrapper implements ILibp2pWorkerWrapper {
   }
 
   // TODO: Should this just be events? Do they need to report errors back?
-  prepareBeaconCommitteeSubnet(subscriptions: CommitteeSubscription[]): Promise<void> {
-    return this.getApi().prepareBeaconCommitteeSubnet(subscriptions);
+  prepareBeaconCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
+    return this.getApi().prepareBeaconCommitteeSubnets(subscriptions);
   }
   prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
     return this.getApi().prepareSyncCommitteeSubnets(subscriptions);
@@ -180,7 +182,7 @@ export class Libp2pkWorkerWrapper implements ILibp2pWorkerWrapper {
     return this.getApi().dumpMeshPeers();
   }
 
-  private getApi(): Libp2pWorkerApi {
+  private getApi(): NetworkWorkerApi {
     return this.modules.workerApi;
   }
 }

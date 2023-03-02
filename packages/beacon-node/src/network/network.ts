@@ -29,7 +29,7 @@ import {
   stringifyGossipTopic,
   toGossipTopic,
 } from "./gossip/topic.js";
-import {Libp2pkWorkerWrapper} from "./libp2pWorker/index.js";
+import {WorkerNetworkCore} from "./libp2pWorker/index.js";
 
 type NetworkModules = {
   opts: NetworkOptions;
@@ -39,7 +39,7 @@ type NetworkModules = {
   signal: AbortSignal;
   networkEventBus: NetworkEventBus;
   networkProcessor: NetworkProcessor;
-  worker: Libp2pkWorkerWrapper;
+  worker: WorkerNetworkCore;
 };
 
 export type NetworkInitModules = {
@@ -79,7 +79,7 @@ export class Network implements INetwork {
   private readonly networkProcessor: NetworkProcessor;
 
   // Worker TODO
-  private readonly worker: Libp2pkWorkerWrapper;
+  private readonly worker: NetworkCore;
 
   private subscribedToCoreTopics = false;
   private regossipBlsChangesPromise: Promise<void> | null = null;
@@ -117,7 +117,7 @@ export class Network implements INetwork {
       opts
     );
 
-    const worker = await Libp2pkWorkerWrapper.init({
+    const worker = await WorkerNetworkCore.init({
       opts,
       config,
       genesisTime: chain.genesisTime,
@@ -195,7 +195,7 @@ export class Network implements INetwork {
   /**
    * Request att subnets up `toSlot`. Network will ensure to mantain some peers for each
    */
-  prepareBeaconCommitteeSubnet(subscriptions: CommitteeSubscription[]): Promise<void> {
+  prepareBeaconCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
     return this.worker.prepareBeaconCommitteeSubnet(subscriptions);
   }
 

@@ -10,11 +10,11 @@ import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {getReqRespHandlersEventBased} from "../reqresp/utils/handlerToEvents.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
-import {Libp2pWorkerApi, Libp2pWorkerData} from "./types.js";
-import {BadNameLibp2pWorker} from "./badNameWorkerWrapper.js";
+import {NetworkWorkerApi, NetworkWorkerData} from "./types.js";
+import {BaseNetwork} from "./badNameWorkerWrapper.js";
 
 // Cloned data from instatiation
-const workerData = worker.workerData as Libp2pWorkerData;
+const workerData = worker.workerData as NetworkWorkerData;
 // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
 if (!workerData) throw Error("workerData must be defined");
 
@@ -39,7 +39,7 @@ const clock = new LocalClock({config, genesisTime: workerData.genesisTime, signa
 // ReqResp handles that transform internal async iterable into events
 const reqRespHandlers = getReqRespHandlersEventBased(networkEventBus);
 
-const badNameLibp2pWorker = await BadNameLibp2pWorker.init({
+const badNameLibp2pWorker = await BaseNetwork.init({
   opts: workerData.opts,
   config,
   peerId,
@@ -58,7 +58,7 @@ networkEventBus.on(NetworkEvent.pendingGossipsubMessage, (data) => {
   pendingGossipsubMessageSubject.next(data);
 });
 
-const libp2pWorkerApi: Libp2pWorkerApi = {
+const libp2pWorkerApi: NetworkWorkerApi = {
   close() {
     abortController.abort();
     return badNameLibp2pWorker.close();
@@ -73,7 +73,7 @@ const libp2pWorkerApi: Libp2pWorkerApi = {
   },
 
   // TODO: Should this just be events? Do they need to report errors back?
-  prepareBeaconCommitteeSubnet: async (subscriptions: CommitteeSubscription[]) =>
+  prepareBeaconCommitteeSubnets: async (subscriptions: CommitteeSubscription[]) =>
     badNameLibp2pWorker.prepareBeaconCommitteeSubnet(subscriptions),
   prepareSyncCommitteeSubnets: async (subscriptions: CommitteeSubscription[]) =>
     badNameLibp2pWorker.prepareSyncCommitteeSubnets(subscriptions),
