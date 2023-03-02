@@ -1,7 +1,7 @@
 import {PublishResult} from "@libp2p/interface-pubsub";
 import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {Observable} from "@chainsafe/threads/observable";
-import {ILibp2pWorkerShared} from "../interface.js";
+import {NetworkCore} from "../interface.js";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {IReqRespBeaconNode} from "../reqresp/interface.js";
 import {NetworkOptions} from "../options.js";
@@ -26,7 +26,7 @@ export type Libp2pWorkerData = {
  * API exposed by the libp2p worker
  */
 export type Libp2pWorkerApi = IReqRespBeaconNode &
-  ILibp2pWorkerShared & {
+  NetworkCore & {
     close(): Promise<void>;
 
     publishGossipObject(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;

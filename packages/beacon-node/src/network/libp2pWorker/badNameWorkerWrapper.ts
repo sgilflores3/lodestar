@@ -24,6 +24,7 @@ import {PeerRpcScoreStore, PeerScoreStats} from "../peers/index.js";
 import {getConnectionsMap} from "../util.js";
 import {BeaconClock} from "../../chain/index.js";
 import {ClockEvent} from "../../chain/clock/LocalClock.js";
+import {NetworkInitModules} from "../network.js";
 
 type Mods = {
   libp2p: Libp2p;
@@ -250,19 +251,19 @@ export class BadNameLibp2pWorker {
 
   // REST API queries
 
-  getNetworkIdentity(): routes.node.NetworkIdentity {
-    const enr = await network.getEnr();
+  async getNetworkIdentity(): Promise<routes.node.NetworkIdentity> {
+    const enr = await this.peerManager["discovery"]?.discv5.enr();
     const discoveryAddresses = [
       enr?.getLocationMultiaddr("tcp")?.toString() ?? null,
       enr?.getLocationMultiaddr("udp")?.toString() ?? null,
     ].filter((addr): addr is string => Boolean(addr));
 
     return {
-      peerId: network.peerId.toString(),
+      peerId: this.libp2p.peerId.toString(),
       enr: enr?.encodeTxt() || "",
       discoveryAddresses,
-      p2pAddresses: network.localMultiaddrs.map((m) => m.toString()),
-      metadata: await network.getMetadata(),
+      p2pAddresses: this.libp2p.getMultiaddrs().map((m) => m.toString()),
+      metadata: this.metadata,
     };
   }
 

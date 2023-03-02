@@ -122,19 +122,25 @@ export type GossipModules = {
   chain: IBeaconChain;
 };
 
+export type GossipPublishResult = Promise<number>;
+
 export type GossipBeaconNode = {
-  publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<void>;
-  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<void>;
-  publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<number>;
-  publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<number>;
-  publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<void>;
-  publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<void>;
-  publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<void>;
-  publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<void>;
-  publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<void>;
-  publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<void>;
-  publishLightClientFinalityUpdate(lightClientFinalityUpdate: allForks.LightClientFinalityUpdate): Promise<void>;
-  publishLightClientOptimisticUpdate(lightClientOptimisitcUpdate: allForks.LightClientOptimisticUpdate): Promise<void>;
+  publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<GossipPublishResult>;
+  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<GossipPublishResult>;
+  publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<GossipPublishResult>;
+  publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<GossipPublishResult>;
+  publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<GossipPublishResult>;
+  publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<GossipPublishResult>;
+  publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<GossipPublishResult>;
+  publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<GossipPublishResult>;
+  publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<GossipPublishResult>;
+  publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<GossipPublishResult>;
+  publishLightClientFinalityUpdate(
+    lightClientFinalityUpdate: allForks.LightClientFinalityUpdate
+  ): Promise<GossipPublishResult>;
+  publishLightClientOptimisticUpdate(
+    lightClientOptimisitcUpdate: allForks.LightClientOptimisticUpdate
+  ): Promise<GossipPublishResult>;
 };
 
 /**
