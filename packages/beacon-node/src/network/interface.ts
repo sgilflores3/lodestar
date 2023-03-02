@@ -4,17 +4,14 @@ import {Registrar} from "@libp2p/interface-registrar";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {PeerId} from "@libp2p/interface-peer-id";
 import {ConnectionManager} from "@libp2p/interface-connection-manager";
-import {SignableENR} from "@chainsafe/discv5";
 import {allForks, altair, capella, deneb, phase0} from "@lodestar/types";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {routes} from "@lodestar/api";
 import {BlockInput} from "../chain/blocks/types.js";
 import {INetworkEventBus} from "./events.js";
-import {GossipType} from "./gossip/index.js";
 import {PeerAction, PeerScoreStats} from "./peers/index.js";
 import {IReqRespBeaconNode} from "./reqresp/interface.js";
 import {CommitteeSubscription} from "./subnets/index.js";
-import {PendingGossipsubMessage} from "./processor/types.js";
 
 export type PeerSearchOptions = {
   supportsProtocols?: string[];
@@ -23,33 +20,59 @@ export type PeerSearchOptions = {
 
 export type GossipPublishResult = Promise<number>;
 
-export interface INetwork {
+/**
+ * Methods that exist with the same API in the worker and the public facing Network class
+ */
+export interface ILibp2pWorkerShared extends IReqRespBeaconNode {
+  close(): Promise<void>;
+
+  scrapeMetrics(): Promise<string>;
+
+  // Peer manager control
+  /** Subscribe, search peers, join long-lived attnets */
+  prepareBeaconCommitteeSubnet(subscriptions: CommitteeSubscription[]): Promise<void>;
+  /** Subscribe, search peers, join long-lived syncnets */
+  prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void>;
+
+  // REST API getters
+  getConnectedPeers(): Promise<PeerId[]>;
+  getConnectedPeerCount(): Promise<number>;
+  getNetworkIdentity(): Promise<routes.node.NetworkIdentity>;
+
+  // Gossip control
+  subscribeGossipCoreTopics(): Promise<void>;
+  unsubscribeGossipCoreTopics(): Promise<void>;
+
+  // Debug
+  connectToPeer(peer: PeerId, multiaddr: Multiaddr[]): Promise<void>;
+  disconnectPeer(peer: PeerId): Promise<void>;
+  dumpPeers(): Promise<routes.lodestar.LodestarNodePeer[]>;
+  dumpPeer(peerIdStr: string): Promise<routes.lodestar.LodestarNodePeer | undefined>;
+  dumpPeerScoreStats(): Promise<PeerScoreStats>;
+  dumpGossipPeerScoreStats(): Promise<PeerScoreStatsDump>;
+  dumpDiscv5KadValues(): Promise<string[]>;
+  dumpMeshPeers(): Promise<Record<string, string[]>>;
+}
+
+export interface ILibp2pWorkerWrapper extends ILibp2pWorkerShared {
+  test(): Promise<void>;
+}
+
+export interface INetwork extends ILibp2pWorkerShared {
   /** Our network identity */
   peerId: PeerId;
-  localMultiaddrs: Multiaddr[];
 
   events: INetworkEventBus;
   reqResp: IReqRespBeaconNode;
-
-  getEnr(): Promise<SignableENR | undefined>;
-  getMetadata(): Promise<altair.Metadata>;
-  getConnectedPeers(): PeerId[];
-  getConnectedPeerCount(): number;
 
   publishBeaconBlockMaybeBlobs(signedBlock: BlockInput): GossipPublishResult;
   beaconBlocksMaybeBlobsByRange(peerId: PeerId, request: phase0.BeaconBlocksByRangeRequest): Promise<BlockInput[]>;
   beaconBlocksMaybeBlobsByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<BlockInput[]>;
 
-  /** Subscribe, search peers, join long-lived attnets */
-  prepareBeaconCommitteeSubnet(subscriptions: CommitteeSubscription[]): Promise<void>;
-  /** Subscribe, search peers, join long-lived syncnets */
-  prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void>;
   reStatusPeers(peers: PeerId[]): Promise<void>;
-  reportPeer(peer: PeerId, action: PeerAction, actionName: string): Promise<void>;
+  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void;
 
   // Gossip handler
-  subscribeGossipCoreTopics(): Promise<void>;
-  unsubscribeGossipCoreTopics(): Promise<void>;
   isSubscribedToGossipCoreTopics(): boolean;
 
   // Gossip publish
@@ -71,17 +94,6 @@ export interface INetwork {
   // Service
   metrics(): Promise<string>;
   close(): Promise<void>;
-
-  // Debug
-  connectToPeer(peer: PeerId, multiaddr: Multiaddr[]): Promise<void>;
-  disconnectPeer(peer: PeerId): Promise<void>;
-  dumpPeers(): Promise<routes.lodestar.LodestarNodePeer[]>;
-  dumpPeer(peerIdStr: string): Promise<routes.lodestar.LodestarNodePeer | undefined>;
-  dumpPeerScoreStats(): Promise<PeerScoreStats>;
-  dumpGossipPeerScoreStats(): Promise<PeerScoreStatsDump>;
-  dumpGossipQueue(gossipType: GossipType): Promise<PendingGossipsubMessage[]>;
-  dumpDiscv5KadValues(): Promise<string[]>;
-  dumpMeshPeers(): Promise<Record<string, string[]>>;
 }
 
 export type PeerDirection = Connection["stat"]["direction"];

@@ -474,7 +474,7 @@ export class BackfillSync extends (EventEmitter as {new (): BackfillSyncEmitter}
 
             // falls through
             case BackfillSyncErrorCode.INVALID_SIGNATURE:
-              await this.network.reportPeer(peer, PeerAction.LowToleranceError, "BadSyncBlocks");
+              this.network.reportPeer(peer, PeerAction.LowToleranceError, "BadSyncBlocks");
           }
         }
       } finally {

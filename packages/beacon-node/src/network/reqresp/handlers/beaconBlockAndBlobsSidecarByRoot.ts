@@ -1,4 +1,4 @@
-import {ContextBytesType, EncodedPayload, EncodedPayloadType} from "@lodestar/reqresp";
+import {ContextBytesType, EncodedPayloadBytes, EncodedPayloadType} from "@lodestar/reqresp";
 import {deneb} from "@lodestar/types";
 import {toHex} from "@lodestar/utils";
 import {IBeaconChain} from "../../../chain/index.js";
@@ -9,7 +9,7 @@ export async function* onBeaconBlockAndBlobsSidecarByRoot(
   requestBody: deneb.BeaconBlockAndBlobsSidecarByRootRequest,
   chain: IBeaconChain,
   db: IBeaconDb
-): AsyncIterable<EncodedPayload<deneb.SignedBeaconBlockAndBlobsSidecar>> {
+): AsyncIterable<EncodedPayloadBytes> {
   const finalizedSlot = chain.forkChoice.getFinalizedBlock().slot;
 
   for (const blockRoot of requestBody) {
@@ -40,7 +40,7 @@ export async function* onBeaconBlockAndBlobsSidecarByRoot(
       bytes: signedBeaconBlockAndBlobsSidecarFromBytes(blockBytes, blobsSidecarBytes),
       contextBytes: {
         type: ContextBytesType.ForkDigest,
-        forkSlot: getSlotFromBytes(blockBytes),
+        fork: chain.config.getForkName(getSlotFromBytes(blockBytes)),
       },
     };
   }

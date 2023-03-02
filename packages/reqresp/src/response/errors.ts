@@ -5,6 +5,7 @@ type RpcResponseStatusNotSuccess = Exclude<RespStatus, RespStatus.SUCCESS>;
 
 export enum ResponseErrorCode {
   RESPONSE_STATUS_ERROR = "RESPONSE_STATUS_ERROR",
+  INVALID_REQUEST = "INVALID_REQUEST",
 }
 
 type RequestErrorType = {

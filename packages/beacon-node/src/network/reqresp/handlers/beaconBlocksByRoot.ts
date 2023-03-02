@@ -1,5 +1,5 @@
-import {EncodedPayload, EncodedPayloadType, ContextBytesType} from "@lodestar/reqresp";
-import {allForks, phase0, Slot} from "@lodestar/types";
+import {EncodedPayloadBytes, EncodedPayloadType, ContextBytesType} from "@lodestar/reqresp";
+import {phase0, Slot} from "@lodestar/types";
 import {IBeaconChain} from "../../../chain/index.js";
 import {IBeaconDb} from "../../../db/index.js";
 import {getSlotFromBytes} from "../../../util/multifork.js";
@@ -8,7 +8,7 @@ export async function* onBeaconBlocksByRoot(
   requestBody: phase0.BeaconBlocksByRootRequest,
   chain: IBeaconChain,
   db: IBeaconDb
-): AsyncIterable<EncodedPayload<allForks.SignedBeaconBlock>> {
+): AsyncIterable<EncodedPayloadBytes> {
   for (const blockRoot of requestBody) {
     const root = blockRoot;
     const summary = chain.forkChoice.getBlock(root);
@@ -33,7 +33,7 @@ export async function* onBeaconBlocksByRoot(
         bytes: blockBytes,
         contextBytes: {
           type: ContextBytesType.ForkDigest,
-          forkSlot: slot ?? getSlotFromBytes(blockBytes),
+          fork: chain.config.getForkName(slot ?? getSlotFromBytes(blockBytes)),
         },
       };
     }

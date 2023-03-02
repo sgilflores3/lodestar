@@ -4,7 +4,7 @@ import {Message, TopicValidatorResult} from "@libp2p/interface-pubsub";
 import StrictEventEmitter from "strict-event-emitter-types";
 import {PeerIdStr} from "@chainsafe/libp2p-gossipsub/types";
 import {ForkName} from "@lodestar/params";
-import {allForks, altair, capella, deneb, phase0} from "@lodestar/types";
+import {allForks, altair, capella, deneb, phase0, Slot} from "@lodestar/types";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger} from "@lodestar/utils";
 import {IBeaconChain} from "../../chain/index.js";
@@ -152,7 +152,8 @@ export type GossipValidatorFn = (
   topic: GossipTopic,
   msg: Message,
   propagationSource: PeerIdStr,
-  seenTimestampSec: number
+  seenTimestampSec: number,
+  importUpToSlot: Slot | null
 ) => Promise<TopicValidatorResult>;
 
 export type ValidatorFnsByType = {[K in GossipType]: GossipValidatorFn};
@@ -165,14 +166,16 @@ export type GossipHandlerFn = (
   object: GossipTypeMap[GossipType],
   topic: GossipTopicMap[GossipType],
   peerIdStr: string,
-  seenTimestampSec: number
+  seenTimestampSec: number,
+  importUpToSlot: Slot | null
 ) => Promise<void>;
 export type GossipHandlers = {
   [K in GossipType]: (
     object: GossipTypeMap[K],
     topic: GossipTopicMap[K],
     peerIdStr: string,
-    seenTimestampSec: number
+    seenTimestampSec: number,
+    importUpToSlot: Slot | null
   ) => Promise<void>;
 };
 

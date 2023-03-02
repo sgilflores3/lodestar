@@ -1,4 +1,4 @@
-import {Encoding, EncodedPayload, TypeSerializer} from "../types.js";
+import {Encoding, EncodedPayload, TypeSerializer, TypeSizes} from "../types.js";
 import {BufferedSource} from "../utils/index.js";
 import {readSszSnappyPayload} from "./sszSnappy/decode.js";
 import {writeSszSnappyPayload} from "./sszSnappy/encode.js";
@@ -14,11 +14,11 @@ import {writeSszSnappyPayload} from "./sszSnappy/encode.js";
  * <encoding-dependent-header> | <encoded-payload>
  * ```
  */
-export async function readEncodedPayload<T>(
+export async function readEncodedPayload(
   bufferedSource: BufferedSource,
   encoding: Encoding,
-  type: TypeSerializer<T>
-): Promise<T> {
+  type: TypeSizes
+): Promise<Uint8Array> {
   switch (encoding) {
     case Encoding.SSZ_SNAPPY:
       return readSszSnappyPayload(bufferedSource, type);

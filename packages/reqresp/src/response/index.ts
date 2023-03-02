@@ -2,6 +2,7 @@ import {pipe} from "it-pipe";
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Stream} from "@libp2p/interface-connection";
 import {Uint8ArrayList} from "uint8arraylist";
+import {ForkName} from "@lodestar/params";
 import {Logger, TimeoutError, withTimeout} from "@lodestar/utils";
 import {prettyPrintPeerId} from "../utils/index.js";
 import {ProtocolDefinition} from "../types.js";
@@ -65,17 +66,31 @@ export async function handleRequest<Req, Resp>({
     // in case request whose body is a List fails at chunk_i > 0, without breaking out of the for..await..of
     (async function* requestHandlerSource() {
       try {
-        const requestBody = await withTimeout(
-          () => pipe(stream.source as AsyncIterable<Uint8ArrayList>, requestDecode(protocol)),
-          REQUEST_TIMEOUT,
-          signal
-        ).catch((e: unknown) => {
-          if (e instanceof TimeoutError) {
-            throw e; // Let outter catch {} re-type the error as SERVER_ERROR
-          } else {
+        const requestType = protocol.requestType(ForkName.phase0);
+        let requestBody: Req;
+
+        if (requestType) {
+          const requestBytes = await withTimeout(
+            () => pipe(stream.source as AsyncIterable<Uint8ArrayList>, requestDecode(protocol, requestType)),
+            REQUEST_TIMEOUT,
+            signal
+          ).catch((e: unknown) => {
+            if (e instanceof TimeoutError) {
+              throw e; // Let outter catch {} re-type the error as SERVER_ERROR
+            } else {
+              throw new ResponseError(RespStatus.INVALID_REQUEST, (e as Error).message);
+            }
+          });
+
+          try {
+            requestBody = requestType.deserialize(requestBytes);
+          } catch (e) {
             throw new ResponseError(RespStatus.INVALID_REQUEST, (e as Error).message);
           }
-        });
+        } else {
+          // If requestType == null, do not expect any request
+          requestBody = null as Req;
+        }
 
         logger.debug("Req  received", {...logCtx, body: protocol.renderRequestBody?.(requestBody)});
 

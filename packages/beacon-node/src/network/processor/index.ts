@@ -1,16 +1,19 @@
 import {Logger, mapValues} from "@lodestar/utils";
 import {IBeaconChain} from "../../chain/interface.js";
 import {Metrics} from "../../metrics/metrics.js";
+import {IBeaconDb} from "../../db/interface.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {GossipType} from "../gossip/interface.js";
+import {getReqRespHandlers, ReqRespHandlers} from "../reqresp/ReqRespBeaconNode.js";
 import {createGossipQueues} from "./gossipQueues.js";
 import {NetworkWorker, NetworkWorkerModules} from "./worker.js";
-import {PendingGossipsubMessage} from "./types.js";
+import {IteratorEventType, PendingGossipsubMessage, ReqRespIncomingRequest} from "./types.js";
 import {ValidatorFnsModules, GossipHandlerOpts} from "./gossipHandlers.js";
 
 export type NetworkProcessorModules = NetworkWorkerModules &
   ValidatorFnsModules & {
     chain: IBeaconChain;
+    db: IBeaconDb;
     events: NetworkEventBus;
     logger: Logger;
     metrics: Metrics | null;
@@ -66,15 +69,20 @@ export class NetworkProcessor {
   private readonly metrics: Metrics | null;
   private readonly gossipQueues = createGossipQueues<PendingGossipsubMessage>();
   private readonly gossipTopicConcurrency = mapValues(this.gossipQueues, () => 0);
+  private readonly reqRespHandlers: ReqRespHandlers;
+  private readonly events: NetworkEventBus;
 
   constructor(modules: NetworkProcessorModules, private readonly opts: NetworkProcessorOpts) {
     const {chain, events, logger, metrics} = modules;
     this.chain = chain;
     this.metrics = metrics;
     this.logger = logger;
+    this.events = events;
+    this.reqRespHandlers = getReqRespHandlers(modules);
     this.worker = new NetworkWorker(modules, opts);
 
     events.on(NetworkEvent.pendingGossipsubMessage, this.onPendingGossipsubMessage.bind(this));
+    events.on(NetworkEvent.reqRespIncomingRequest, this.onReqRespIncomingRequest.bind(this));
 
     if (metrics) {
       metrics.gossipValidationQueueLength.addCollect(() => {
@@ -114,6 +122,13 @@ export class NetworkProcessor {
 
     // Tentatively perform work
     this.executeWork();
+  }
+
+  private onReqRespIncomingRequest(data: ReqRespIncomingRequest): void {
+    // TODO: Implement queues and throttling
+    this.processReqRespIncomingRequest(data).catch((e) =>
+      this.logger.error("processReqRespIncomingRequest must not throw", {}, e)
+    );
   }
 
   private executeWork(): void {
@@ -157,5 +172,31 @@ export class NetworkProcessor {
     }
 
     this.metrics?.networkProcessor.jobsSubmitted.observe(jobsSubmitted);
+  }
+
+  private async processReqRespIncomingRequest(data: ReqRespIncomingRequest): Promise<void> {
+    try {
+      const handler = this.reqRespHandlers[data.payload.method];
+      for await (const item of handler(data.payload.data, data.from)) {
+        this.events.emit(NetworkEvent.reqRespOutgoingResponse, {
+          from: data.from,
+          requestId: data.requestId,
+          payload: {type: IteratorEventType.nextItem, item},
+        });
+      }
+
+      this.events.emit(NetworkEvent.reqRespOutgoingResponse, {
+        from: data.from,
+        requestId: data.requestId,
+        payload: {type: IteratorEventType.done},
+      });
+    } catch (e) {
+      // TODO: Also log locally
+      this.events.emit(NetworkEvent.reqRespOutgoingResponse, {
+        from: data.from,
+        requestId: data.requestId,
+        payload: {type: IteratorEventType.error, error: e as Error},
+      });
+    }
   }
 }

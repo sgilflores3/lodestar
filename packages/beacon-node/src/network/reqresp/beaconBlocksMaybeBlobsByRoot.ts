@@ -6,11 +6,11 @@ import {toHex} from "@lodestar/utils";
 import {ForkSeq} from "@lodestar/params";
 import {BlockInput, getBlockInput} from "../../chain/blocks/types.js";
 import {wrapError} from "../../util/wrapError.js";
-import {IReqRespBeaconNode} from "./interface.js";
+import {Network} from "../network.js";
 
 export async function beaconBlocksMaybeBlobsByRoot(
+  this: Network,
   config: BeaconConfig,
-  reqResp: IReqRespBeaconNode,
   peerId: PeerId,
   request: phase0.BeaconBlocksByRootRequest,
   currentSlot: Epoch,
@@ -18,7 +18,7 @@ export async function beaconBlocksMaybeBlobsByRoot(
 ): Promise<BlockInput[]> {
   // Assume all requests are post Deneb
   if (config.getForkSeq(finalizedSlot) >= ForkSeq.deneb) {
-    const blocksAndBlobs = await reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request);
+    const blocksAndBlobs = await this.beaconBlockAndBlobsSidecarByRoot(peerId, request);
     return blocksAndBlobs.map(({beaconBlock, blobsSidecar}) =>
       getBlockInput.postDeneb(config, beaconBlock, blobsSidecar)
     );
@@ -26,7 +26,7 @@ export async function beaconBlocksMaybeBlobsByRoot(
 
   // Assume all request are pre EIP-4844
   else if (config.getForkSeq(currentSlot) < ForkSeq.deneb) {
-    const blocks = await reqResp.beaconBlocksByRoot(peerId, request);
+    const blocks = await this.beaconBlocksByRoot(peerId, request);
     return blocks.map((block) => getBlockInput.preDeneb(config, block));
   }
 
@@ -35,19 +35,19 @@ export async function beaconBlocksMaybeBlobsByRoot(
   else {
     return Promise.all(
       request.map(async (beaconBlockRoot) =>
-        beaconBlockAndBlobsSidecarByRootFallback(config, reqResp, peerId, beaconBlockRoot)
+        beaconBlockAndBlobsSidecarByRootFallback.call(this, config, peerId, beaconBlockRoot)
       )
     );
   }
 }
 
 async function beaconBlockAndBlobsSidecarByRootFallback(
+  this: Network,
   config: BeaconConfig,
-  reqResp: IReqRespBeaconNode,
   peerId: PeerId,
   beaconBlockRoot: Root
 ): Promise<BlockInput> {
-  const resBlockBlobs = await wrapError(reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, [beaconBlockRoot]));
+  const resBlockBlobs = await wrapError(this.beaconBlockAndBlobsSidecarByRoot(peerId, [beaconBlockRoot]));
 
   if (resBlockBlobs.err) {
     // From the spec, if the block is from before the fork, errors with 3: ResourceUnavailable
@@ -74,7 +74,7 @@ async function beaconBlockAndBlobsSidecarByRootFallback(
     return getBlockInput.postDeneb(config, beaconBlock, blobsSidecar);
   }
 
-  const resBlocks = await reqResp.beaconBlocksByRoot(peerId, [beaconBlockRoot]);
+  const resBlocks = await this.beaconBlocksByRoot(peerId, [beaconBlockRoot]);
   if (resBlocks.length < 1) {
     throw Error(`beaconBlocksByRoot return empty for block root ${toHex(beaconBlockRoot)}`);
   }

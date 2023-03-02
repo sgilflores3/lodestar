@@ -3,7 +3,7 @@ import {PeerId} from "@libp2p/interface-peer-id";
 import {Libp2p} from "libp2p";
 import {Uint8ArrayList} from "uint8arraylist";
 import {ErrorAborted, Logger, withTimeout, TimeoutError} from "@lodestar/utils";
-import {ProtocolDefinition} from "../types.js";
+import {EncodedPayloadBytes, ProtocolDefinition} from "../types.js";
 import {prettyPrintPeerId, abortableSource} from "../utils/index.js";
 import {ResponseError} from "../response/index.js";
 import {requestEncode} from "../encoders/requestEncode.js";
@@ -52,7 +52,7 @@ type SendRequestModules = {
  *    - Any part of the response_chunk fails validation. Throws a typed error (see `SszSnappyError`)
  *    - The maximum number of requested chunks are read. Does not throw, returns read chunks only.
  */
-export async function* sendRequest<Req, Resp>(
+export async function* sendRequest<Req>(
   {logger, libp2p, peerClient}: SendRequestModules,
   peerId: PeerId,
   protocols: ProtocolDefinition[],
@@ -61,7 +61,7 @@ export async function* sendRequest<Req, Resp>(
   signal?: AbortSignal,
   opts?: SendRequestOpts,
   requestId = 0
-): AsyncIterable<Resp> {
+): AsyncIterable<EncodedPayloadBytes> {
   if (protocols.length === 0) {
     throw Error("sendRequest must set > 0 protocols");
   }

@@ -1,7 +1,6 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {BeaconConfig, ForkConfig, ForkDigestContext} from "@lodestar/config";
 import {ForkName} from "@lodestar/params";
-import {Slot} from "@lodestar/types";
 import {LodestarError} from "@lodestar/utils";
 import {RateLimiterQuota} from "./rate_limiter/rateLimiterGRCA.js";
 
@@ -10,16 +9,16 @@ export enum EncodedPayloadType {
   bytes,
 }
 
-export interface EncodedPayloadSsz<T> {
+export type EncodedPayloadSsz<T> = {
   type: EncodedPayloadType.ssz;
   data: T;
-}
+};
 
-export interface EncodedPayloadBytes {
+export type EncodedPayloadBytes = {
   type: EncodedPayloadType.bytes;
   bytes: Uint8Array;
   contextBytes: ContextBytes;
-}
+};
 
 export type EncodedPayload<T> = EncodedPayloadSsz<T> | EncodedPayloadBytes;
 
@@ -85,7 +84,7 @@ export type ContextBytesFactory<Response> =
       forkFromResponse: (response: Response) => ForkName;
     };
 
-export type ContextBytes = {type: ContextBytesType.Empty} | {type: ContextBytesType.ForkDigest; forkSlot: Slot};
+export type ContextBytes = {type: ContextBytesType.Empty} | {type: ContextBytesType.ForkDigest; fork: ForkName};
 
 export enum ContextBytesType {
   /** 0 bytes chunk, can be ignored */
@@ -93,6 +92,8 @@ export enum ContextBytesType {
   /** A fixed-width 4 byte <context-bytes>, set to the ForkDigest matching the chunk: compute_fork_digest(fork_version, genesis_validators_root) */
   ForkDigest,
 }
+
+export const contextBytesEmpty = {type: ContextBytesType.Empty as const};
 
 export enum LightClientServerErrorCode {
   RESOURCE_UNAVAILABLE = "RESOURCE_UNAVAILABLE",
@@ -105,11 +106,9 @@ export class LightClientServerError extends LodestarError<LightClientServerError
 /**
  * Lightweight interface of ssz Type<T>
  */
-export interface TypeSerializer<T> {
+export interface TypeSerializer<T> extends TypeSizes {
   serialize(data: T): Uint8Array;
   deserialize(bytes: Uint8Array): T;
-  maxSize: number;
-  minSize: number;
   equals(a: T, b: T): boolean;
 }
 
@@ -117,3 +116,8 @@ export interface ReqRespRateLimiterOpts {
   rateLimitMultiplier?: number;
   onRateLimit?: (peer: PeerId, method: string) => void;
 }
+
+export type TypeSizes = {
+  maxSize: number;
+  minSize: number;
+};

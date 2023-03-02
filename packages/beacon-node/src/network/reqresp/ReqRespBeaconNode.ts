@@ -312,10 +312,19 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     if (ForkSeq[fork] >= ForkSeq.altair) {
       // Should be okay to enable before altair, but for consistency only enable afterwards
       protocols.push(
-        reqRespProtocols.LightClientBootstrap(modules, this.reqRespHandlers.onLightClientBootstrap),
-        reqRespProtocols.LightClientFinalityUpdate(modules, this.reqRespHandlers.onLightClientFinalityUpdate),
-        reqRespProtocols.LightClientOptimisticUpdate(modules, this.reqRespHandlers.onLightClientOptimisticUpdate),
-        reqRespProtocols.LightClientUpdatesByRange(modules, this.reqRespHandlers.onLightClientUpdatesByRange)
+        reqRespProtocols.LightClientBootstrap(modules, this.reqRespHandlers[ReqRespMethod.LightClientBootstrap]),
+        reqRespProtocols.LightClientFinalityUpdate(
+          modules,
+          this.reqRespHandlers[ReqRespMethod.LightClientFinalityUpdate]
+        ),
+        reqRespProtocols.LightClientOptimisticUpdate(
+          modules,
+          this.reqRespHandlers[ReqRespMethod.LightClientOptimisticUpdate]
+        ),
+        reqRespProtocols.LightClientUpdatesByRange(
+          modules,
+          this.reqRespHandlers[ReqRespMethod.LightClientUpdatesByRange]
+        )
       );
     }
 
@@ -323,9 +332,9 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
       protocols.push(
         reqRespProtocols.BeaconBlockAndBlobsSidecarByRoot(
           modules,
-          this.reqRespHandlers.onBeaconBlockAndBlobsSidecarByRoot
+          this.reqRespHandlers[ReqRespMethod.BeaconBlockAndBlobsSidecarByRoot]
         ),
-        reqRespProtocols.BlobsSidecarsByRange(modules, this.reqRespHandlers.onBlobsSidecarsByRange)
+        reqRespProtocols.BlobsSidecarsByRange(modules, this.reqRespHandlers[ReqRespMethod.BlobsSidecarsByRange])
       );
     }
 
@@ -363,7 +372,12 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
   private async *onStatus(req: phase0.Status, peerId: PeerId): AsyncIterable<EncodedPayload<phase0.Status>> {
     this.onIncomingRequestBody({method: ReqRespMethod.Status, body: req}, peerId);
 
-    yield* this.reqRespHandlers.onStatus(req, peerId);
+    // Wrap a promise on:
+    // - emit work to main thread
+    // - on response resolve
+    // - on timeout error or reply with EOF
+
+    yield* this.reqRespHandlers[ReqRespMethod.Status](req, peerId);
   }
 
   private async *onGoodbye(req: phase0.Goodbye, peerId: PeerId): AsyncIterable<EncodedPayload<phase0.Goodbye>> {
@@ -389,13 +403,13 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     req: phase0.BeaconBlocksByRangeRequest,
     peerId: PeerId
   ): AsyncIterable<EncodedPayload<allForks.SignedBeaconBlock>> {
-    yield* this.reqRespHandlers.onBeaconBlocksByRange(req, peerId);
+    yield* this.reqRespHandlers[ReqRespMethod.BeaconBlocksByRange](req, peerId);
   }
 
   private async *onBeaconBlocksByRoot(
     req: phase0.BeaconBlocksByRootRequest,
     peerId: PeerId
   ): AsyncIterable<EncodedPayload<allForks.SignedBeaconBlock>> {
-    yield* this.reqRespHandlers.onBeaconBlocksByRoot(req, peerId);
+    yield* this.reqRespHandlers[ReqRespMethod.BeaconBlocksByRoot](req, peerId);
   }
 }

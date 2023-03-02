@@ -3,12 +3,13 @@ import {BeaconConfig} from "@lodestar/config";
 import {ForkName, SYNC_COMMITTEE_SUBNET_COUNT} from "@lodestar/params";
 import {Epoch, ssz} from "@lodestar/types";
 import {Logger} from "@lodestar/utils";
-import {ChainEvent, IBeaconChain} from "../../chain/index.js";
 import {getActiveForks} from "../forks.js";
-import {Eth2Gossipsub, GossipType} from "../gossip/index.js";
+import {GossipType} from "../gossip/index.js";
 import {MetadataController} from "../metadata.js";
 import {RequestedSubnet, SubnetMap} from "../peers/utils/index.js";
 import {Metrics} from "../../metrics/metrics.js";
+import {BeaconClock, ClockEvent} from "../../util/clock.js";
+import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {CommitteeSubscription, SubnetsService, SubnetsServiceOpts} from "./interface.js";
 
 const gossipType = GossipType.sync_committee;
@@ -29,8 +30,8 @@ export class SyncnetsService implements SubnetsService {
 
   constructor(
     private readonly config: BeaconConfig,
-    private readonly chain: IBeaconChain,
-    private readonly gossip: Eth2Gossipsub,
+    private readonly clock: BeaconClock,
+    private readonly events: NetworkEventBus,
     private readonly metadata: MetadataController,
     private readonly logger: Logger,
     private readonly metrics: Metrics | null,
@@ -42,18 +43,18 @@ export class SyncnetsService implements SubnetsService {
   }
 
   start(): void {
-    this.chain.emitter.on(ChainEvent.clockEpoch, this.onEpoch);
+    this.clock.on(ClockEvent.epoch, this.onEpoch);
   }
 
   stop(): void {
-    this.chain.emitter.off(ChainEvent.clockEpoch, this.onEpoch);
+    this.clock.off(ClockEvent.epoch, this.onEpoch);
   }
 
   /**
    * Get all active subnets for the hearbeat.
    */
   getActiveSubnets(): RequestedSubnet[] {
-    return this.subscriptionsCommittee.getActiveTtl(this.chain.clock.currentSlot);
+    return this.subscriptionsCommittee.getActiveTtl(this.clock.currentSlot);
   }
 
   /**
@@ -78,7 +79,7 @@ export class SyncnetsService implements SubnetsService {
   subscribeSubnetsToNextFork(nextFork: ForkName): void {
     this.logger.info("Suscribing to random attnets to next fork", {nextFork});
     for (const subnet of this.subscriptionsCommittee.getAll()) {
-      this.gossip.subscribeTopic({type: gossipType, fork: nextFork, subnet});
+      this.events.emit(NetworkEvent.subscribeTopic, {type: gossipType, fork: nextFork, subnet});
     }
   }
 
@@ -87,7 +88,7 @@ export class SyncnetsService implements SubnetsService {
     this.logger.info("Unsuscribing to random attnets from prev fork", {prevFork});
     for (let subnet = 0; subnet < SYNC_COMMITTEE_SUBNET_COUNT; subnet++) {
       if (!this.opts?.subscribeAllSubnets) {
-        this.gossip.unsubscribeTopic({type: gossipType, fork: prevFork, subnet});
+        this.events.emit(NetworkEvent.unsubscribeTopic, {type: gossipType, fork: prevFork, subnet});
       }
     }
   }
@@ -120,11 +121,11 @@ export class SyncnetsService implements SubnetsService {
 
   /** Tigger a gossip subcription only if not already subscribed */
   private subscribeToSubnets(subnets: number[]): void {
-    const forks = getActiveForks(this.config, this.chain.clock.currentEpoch);
+    const forks = getActiveForks(this.config, this.clock.currentEpoch);
     for (const subnet of subnets) {
       if (!this.subscriptionsCommittee.has(subnet)) {
         for (const fork of forks) {
-          this.gossip.subscribeTopic({type: gossipType, fork, subnet});
+          this.events.emit(NetworkEvent.subscribeTopic, {type: gossipType, fork, subnet});
         }
         this.metrics?.syncnetsService.subscribeSubnets.inc({subnet});
       }
@@ -133,12 +134,12 @@ export class SyncnetsService implements SubnetsService {
 
   /** Trigger a gossip un-subscrition only if no-one is still subscribed */
   private unsubscribeSubnets(subnets: number[]): void {
-    const forks = getActiveForks(this.config, this.chain.clock.currentEpoch);
+    const forks = getActiveForks(this.config, this.clock.currentEpoch);
     for (const subnet of subnets) {
       // No need to check if active in subscriptionsCommittee since we only have a single SubnetMap
       if (!this.opts?.subscribeAllSubnets) {
         for (const fork of forks) {
-          this.gossip.unsubscribeTopic({type: gossipType, fork, subnet});
+          this.events.emit(NetworkEvent.unsubscribeTopic, {type: gossipType, fork, subnet});
         }
         this.metrics?.syncnetsService.unsubscribeSubnets.inc({subnet});
       }

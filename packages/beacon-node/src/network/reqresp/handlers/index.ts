@@ -2,6 +2,7 @@ import {HandlerTypeFromMessage} from "@lodestar/reqresp";
 import * as protocols from "@lodestar/reqresp/protocols";
 import {IBeaconChain} from "../../../chain/index.js";
 import {IBeaconDb} from "../../../db/index.js";
+import {ReqRespMethod} from "../types.js";
 import {onBeaconBlocksByRange} from "./beaconBlocksByRange.js";
 import {onBeaconBlocksByRoot} from "./beaconBlocksByRoot.js";
 import {onBeaconBlockAndBlobsSidecarByRoot} from "./beaconBlockAndBlobsSidecarByRoot.js";
@@ -12,48 +13,53 @@ import {onLightClientOptimisticUpdate} from "./lightClientOptimisticUpdate.js";
 import {onLightClientUpdatesByRange} from "./lightClientUpdatesByRange.js";
 import {onStatus} from "./status.js";
 
+/* eslint-disable func-names */
+
 export interface ReqRespHandlers {
-  onStatus: HandlerTypeFromMessage<typeof protocols.Status>;
-  onBeaconBlocksByRange: HandlerTypeFromMessage<typeof protocols.BeaconBlocksByRange>;
-  onBeaconBlocksByRoot: HandlerTypeFromMessage<typeof protocols.BeaconBlocksByRoot>;
-  onBeaconBlockAndBlobsSidecarByRoot: HandlerTypeFromMessage<typeof protocols.BeaconBlockAndBlobsSidecarByRoot>;
-  onBlobsSidecarsByRange: HandlerTypeFromMessage<typeof protocols.BlobsSidecarsByRange>;
-  onLightClientBootstrap: HandlerTypeFromMessage<typeof protocols.LightClientBootstrap>;
-  onLightClientUpdatesByRange: HandlerTypeFromMessage<typeof protocols.LightClientUpdatesByRange>;
-  onLightClientFinalityUpdate: HandlerTypeFromMessage<typeof protocols.LightClientFinalityUpdate>;
-  onLightClientOptimisticUpdate: HandlerTypeFromMessage<typeof protocols.LightClientOptimisticUpdate>;
+  [ReqRespMethod.Status]: HandlerTypeFromMessage<typeof protocols.Status>;
+  [ReqRespMethod.BeaconBlocksByRange]: HandlerTypeFromMessage<typeof protocols.BeaconBlocksByRange>;
+  [ReqRespMethod.BeaconBlocksByRoot]: HandlerTypeFromMessage<typeof protocols.BeaconBlocksByRoot>;
+  [ReqRespMethod.BeaconBlockAndBlobsSidecarByRoot]: HandlerTypeFromMessage<
+    typeof protocols.BeaconBlockAndBlobsSidecarByRoot
+  >;
+  [ReqRespMethod.BlobsSidecarsByRange]: HandlerTypeFromMessage<typeof protocols.BlobsSidecarsByRange>;
+  [ReqRespMethod.LightClientBootstrap]: HandlerTypeFromMessage<typeof protocols.LightClientBootstrap>;
+  [ReqRespMethod.LightClientUpdatesByRange]: HandlerTypeFromMessage<typeof protocols.LightClientUpdatesByRange>;
+  [ReqRespMethod.LightClientFinalityUpdate]: HandlerTypeFromMessage<typeof protocols.LightClientFinalityUpdate>;
+  [ReqRespMethod.LightClientOptimisticUpdate]: HandlerTypeFromMessage<typeof protocols.LightClientOptimisticUpdate>;
 }
+
 /**
  * The ReqRespHandler module handles app-level requests / responses from other peers,
  * fetching state from the chain and database as needed.
  */
 export function getReqRespHandlers({db, chain}: {db: IBeaconDb; chain: IBeaconChain}): ReqRespHandlers {
   return {
-    async *onStatus() {
+    [ReqRespMethod.Status]: async function* () {
       yield* onStatus(chain);
     },
-    async *onBeaconBlocksByRange(req) {
+    [ReqRespMethod.BeaconBlocksByRange]: async function* (req) {
       yield* onBeaconBlocksByRange(req, chain, db);
     },
-    async *onBeaconBlocksByRoot(req) {
+    [ReqRespMethod.BeaconBlocksByRoot]: async function* (req) {
       yield* onBeaconBlocksByRoot(req, chain, db);
     },
-    async *onBeaconBlockAndBlobsSidecarByRoot(req) {
+    [ReqRespMethod.BeaconBlockAndBlobsSidecarByRoot]: async function* (req) {
       yield* onBeaconBlockAndBlobsSidecarByRoot(req, chain, db);
     },
-    async *onBlobsSidecarsByRange(req) {
+    [ReqRespMethod.BlobsSidecarsByRange]: async function* (req) {
       yield* onBlobsSidecarsByRange(req, chain, db);
     },
-    async *onLightClientBootstrap(req) {
+    [ReqRespMethod.LightClientBootstrap]: async function* (req) {
       yield* onLightClientBootstrap(req, chain);
     },
-    async *onLightClientUpdatesByRange(req) {
+    [ReqRespMethod.LightClientUpdatesByRange]: async function* (req) {
       yield* onLightClientUpdatesByRange(req, chain);
     },
-    async *onLightClientFinalityUpdate() {
+    [ReqRespMethod.LightClientFinalityUpdate]: async function* () {
       yield* onLightClientFinalityUpdate(chain);
     },
-    async *onLightClientOptimisticUpdate() {
+    [ReqRespMethod.LightClientOptimisticUpdate]: async function* () {
       yield* onLightClientOptimisticUpdate(chain);
     },
   };

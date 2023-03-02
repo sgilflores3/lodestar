@@ -1,40 +1,40 @@
+import {EventEmitter} from "events";
+import StrictEventEmitter from "strict-event-emitter-types";
 import {Epoch, Slot} from "@lodestar/types";
-import {ChainForkConfig} from "@lodestar/config";
+import {ChainConfig} from "@lodestar/config";
 import {ErrorAborted} from "@lodestar/utils";
 import {computeEpochAtSlot, computeTimeAtSlot, getCurrentSlot} from "@lodestar/state-transition";
-
-import {ChainEvent, ChainEventEmitter} from "../emitter.js";
-
 import {MAXIMUM_GOSSIP_CLOCK_DISPARITY} from "../../constants/index.js";
 import {BeaconClock} from "./interface.js";
+
+export const enum ClockEvent {
+  slot = "clock:slot",
+  epoch = "clock:epoch",
+}
+
+export type ClockEvents = {
+  [ClockEvent.slot]: (slot: Slot) => void;
+  [ClockEvent.epoch]: (epoch: Epoch) => void;
+};
 
 /**
  * A local clock, the clock time is assumed to be trusted
  */
-export class LocalClock implements BeaconClock {
-  private readonly config: ChainForkConfig;
-  private readonly genesisTime: number;
+export class LocalClock
+  extends (EventEmitter as {new (): StrictEventEmitter<EventEmitter, ClockEvents>})
+  implements BeaconClock {
+  readonly genesisTime: number;
+  private readonly config: ChainConfig;
   private timeoutId: number | NodeJS.Timeout;
-  private readonly emitter: ChainEventEmitter;
   private readonly signal: AbortSignal;
   private _currentSlot: number;
 
-  constructor({
-    config,
-    genesisTime,
-    emitter,
-    signal,
-  }: {
-    config: ChainForkConfig;
-    genesisTime: number;
-    emitter: ChainEventEmitter;
-    signal: AbortSignal;
-  }) {
+  constructor({config, genesisTime, signal}: {config: ChainConfig; genesisTime: number; signal: AbortSignal}) {
+    super();
     this.config = config;
     this.genesisTime = genesisTime;
     this.timeoutId = setTimeout(this.onNextSlot, this.msUntilNextSlot());
     this.signal = signal;
-    this.emitter = emitter;
     this._currentSlot = getCurrentSlot(this.config, this.genesisTime);
     this.signal.addEventListener("abort", () => clearTimeout(this.timeoutId), {once: true});
   }
@@ -112,17 +112,17 @@ export class LocalClock implements BeaconClock {
       };
 
       const onDone = (): void => {
-        this.emitter.off(ChainEvent.clockSlot, onSlot);
+        this.off(ClockEvent.slot, onSlot);
         this.signal.removeEventListener("abort", onAbort);
         resolve();
       };
 
       const onAbort = (): void => {
-        this.emitter.off(ChainEvent.clockSlot, onSlot);
+        this.off(ClockEvent.slot, onSlot);
         reject(new ErrorAborted());
       };
 
-      this.emitter.on(ChainEvent.clockSlot, onSlot);
+      this.on(ClockEvent.slot, onSlot);
       this.signal.addEventListener("abort", onAbort, {once: true});
     });
   }
@@ -138,13 +138,13 @@ export class LocalClock implements BeaconClock {
       const previousSlot = this._currentSlot;
       this._currentSlot++;
 
-      this.emitter.emit(ChainEvent.clockSlot, this._currentSlot);
+      this.emit(ClockEvent.slot, this._currentSlot);
 
       const previousEpoch = computeEpochAtSlot(previousSlot);
       const currentEpoch = computeEpochAtSlot(this._currentSlot);
 
       if (previousEpoch < currentEpoch) {
-        this.emitter.emit(ChainEvent.clockEpoch, currentEpoch);
+        this.emit(ClockEvent.epoch, currentEpoch);
       }
     }
     //recursively invoke onNextSlot

@@ -203,7 +203,7 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
 
   /** Convenience method for `SyncChain` */
   private reportPeer: SyncChainFns["reportPeer"] = (peer, action, actionName) => {
-    this.network.reportPeer(peer, action, actionName).catch((e) => this.logger.error("Error reporting peer", {}, e));
+    this.network.reportPeer(peer, action, actionName);
   };
 
   /** Convenience method for `SyncChain` */

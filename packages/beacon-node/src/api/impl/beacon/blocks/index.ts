@@ -20,6 +20,11 @@ import {resolveBlockId, toBeaconHeaderResponse} from "./utils.js";
  */
 const MAX_API_CLOCK_DISPARITY_MS = 1000;
 
+/**
+ * PeerID of identity keypair to signal self for score reporting
+ */
+const IDENTITY_PEER_ID = ""; // TODO: Compute identity keypair
+
 export function getBeaconBlockApi({
   chain,
   config,
@@ -233,7 +238,7 @@ export function getBeaconBlockApi({
         () =>
           chain.processBlock(blockForImport).catch((e) => {
             if (e instanceof BlockError && e.type.code === BlockErrorCode.PARENT_UNKNOWN) {
-              network.events.emit(NetworkEvent.unknownBlockParent, blockForImport, network.peerId.toString());
+              network.events.emit(NetworkEvent.unknownBlockParent, blockForImport, IDENTITY_PEER_ID);
             }
             throw e;
           }),

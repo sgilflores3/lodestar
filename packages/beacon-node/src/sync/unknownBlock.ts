@@ -318,9 +318,7 @@ export class UnknownBlockSync {
       for (const peerIdStr of block.peerIdStrs) {
         // TODO: Refactor peerRpcScores to work with peerIdStr only
         const peer = peerIdFromString(peerIdStr);
-        this.network.reportPeer(peer, PeerAction.LowToleranceError, "BadBlockByRoot").catch((e) => {
-          this.logger.error("Error reporting peer", {}, e);
-        });
+        this.network.reportPeer(peer, PeerAction.LowToleranceError, "BadBlockByRoot");
       }
     }
 

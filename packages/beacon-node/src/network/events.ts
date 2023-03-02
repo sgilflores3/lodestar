@@ -5,7 +5,9 @@ import {TopicValidatorResult} from "@libp2p/interface-pubsub";
 import {phase0} from "@lodestar/types";
 import {BlockInput} from "../chain/blocks/types.js";
 import {RequestTypedContainer} from "./reqresp/ReqRespBeaconNode.js";
-import {PendingGossipsubMessage} from "./processor/types.js";
+import {PendingGossipsubMessage, ReqRespIncomingRequest, ReqRespOutgoingResponse} from "./processor/types.js";
+import {GossipTopic} from "./gossip/interface.js";
+import {PeerAction} from "./peers/index.js";
 
 export enum NetworkEvent {
   /** A relevant peer has connected or has been re-STATUS'd */
@@ -20,6 +22,18 @@ export enum NetworkEvent {
   // Network processor events
   pendingGossipsubMessage = "gossip.pendingGossipsubMessage",
   gossipMessageValidationResult = "gossip.messageValidationResult",
+  reqRespIncomingRequest = "reqResp.incomingRequest",
+  reqRespOutgoingResponse = "reqResp.outgoingResponse",
+
+  // Gossip control events
+  subscribeTopic = "gossip.subscribeTopic",
+  unsubscribeTopic = "gossip.unsubscribeTopic",
+
+  // Peer manager events
+  reportPeer = "peerScore.reportPeer",
+  restatusPeers = "peerManager.restatusPeers",
+  /** Chain's head state has changed, and this is the new status */
+  localStatusUpdate = "peerManager.localStatusUpdate",
 }
 
 export type NetworkEvents = {
@@ -33,6 +47,13 @@ export type NetworkEvents = {
     propagationSource: PeerId,
     acceptance: TopicValidatorResult
   ) => void;
+  [NetworkEvent.reqRespIncomingRequest]: (data: ReqRespIncomingRequest) => void;
+  [NetworkEvent.reqRespOutgoingResponse]: (data: ReqRespOutgoingResponse) => void;
+  [NetworkEvent.subscribeTopic]: (topic: GossipTopic) => void;
+  [NetworkEvent.unsubscribeTopic]: (topic: GossipTopic) => void;
+  [NetworkEvent.reportPeer]: (peer: PeerId, action: PeerAction, actionName: string) => void;
+  [NetworkEvent.restatusPeers]: (peers: PeerId[]) => void;
+  [NetworkEvent.localStatusUpdate]: (localStatus: phase0.Status) => void;
 };
 
 export type INetworkEventBus = StrictEventEmitter<EventEmitter, NetworkEvents>;

@@ -8,7 +8,10 @@ import {
   CONTEXT_BYTES_FORK_DIGEST_LENGTH,
   ContextBytesFactory,
   ProtocolDefinition,
-  TypeSerializer,
+  EncodedPayloadBytes,
+  EncodedPayloadType,
+  ContextBytes,
+  contextBytesEmpty,
 } from "../types.js";
 import {RespStatus} from "../interface.js";
 
@@ -28,12 +31,12 @@ enum StreamStatus {
  * ```
  */
 export function responseDecode<Resp>(
-  protocol: ProtocolDefinition,
+  protocol: ProtocolDefinition<unknown, Resp>,
   cbs: {
     onFirstHeader: () => void;
     onFirstResponseChunk: () => void;
   }
-): (source: AsyncIterable<Uint8Array | Uint8ArrayList>) => AsyncIterable<Resp> {
+): (source: AsyncIterable<Uint8Array | Uint8ArrayList>) => AsyncIterable<EncodedPayloadBytes> {
   return async function* responseDecodeSink(source) {
     const bufferedSource = new BufferedSource(source as AsyncGenerator<Uint8ArrayList>);
 
@@ -62,10 +65,15 @@ export function responseDecode<Resp>(
         throw new ResponseError(status, errorMessage);
       }
 
-      const forkName = await readContextBytes<Resp>(protocol.contextBytes, bufferedSource);
-      const type = protocol.responseType(forkName) as TypeSerializer<Resp>;
+      const contextBytes = await readContextBytes<Resp>(protocol.contextBytes, bufferedSource);
+      const type = protocol.responseType(forkNameFromContextBytes(contextBytes));
 
-      yield await readEncodedPayload<Resp>(bufferedSource, protocol.encoding, type);
+      const payloadBytes = await readEncodedPayload(bufferedSource, protocol.encoding, type);
+      yield {
+        type: EncodedPayloadType.bytes,
+        bytes: payloadBytes,
+        contextBytes,
+      };
 
       if (!readFirstResponseChunk) {
         cbs.onFirstResponseChunk();
@@ -133,16 +141,17 @@ export async function readErrorMessage(bufferedSource: BufferedSource): Promise<
  * of the `ForkDigest` or defaults to `phase0`
  */
 export async function readContextBytes<Resp>(
-  contextBytes: ContextBytesFactory<Resp>,
+  contextBytesFactory: ContextBytesFactory<Resp>,
   bufferedSource: BufferedSource
-): Promise<ForkName> {
-  switch (contextBytes.type) {
+): Promise<ContextBytes> {
+  switch (contextBytesFactory.type) {
     case ContextBytesType.Empty:
-      return ForkName.phase0;
+      return contextBytesEmpty;
 
     case ContextBytesType.ForkDigest: {
       const forkDigest = await readContextBytesForkDigest(bufferedSource);
-      return contextBytes.forkDigestContext.forkDigest2ForkName(forkDigest);
+      const fork = contextBytesFactory.forkDigestContext.forkDigest2ForkName(forkDigest);
+      return {type: ContextBytesType.ForkDigest, fork};
     }
   }
 }
@@ -161,4 +170,15 @@ export async function readContextBytesForkDigest(bufferedSource: BufferedSource)
 
   // TODO: Use typed error
   throw Error("Source ended while reading context bytes");
+}
+
+function forkNameFromContextBytes(contextBytes: ContextBytes): ForkName {
+  switch (contextBytes.type) {
+    case ContextBytesType.Empty:
+      return ForkName.phase0;
+
+    case ContextBytesType.ForkDigest: {
+      return contextBytes.fork;
+    }
+  }
 }

@@ -9,6 +9,7 @@ import {Epoch, Slot} from "@lodestar/types";
  * - `SLOTS_PER_EPOCH` - # of slots per epoch
  */
 export type BeaconClock = {
+  readonly genesisTime: number;
   readonly currentSlot: Slot;
   /**
    * If it's too close to next slot, maxCurrentSlot = currentSlot + 1

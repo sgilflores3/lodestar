@@ -10,15 +10,17 @@ import {allForks, altair, phase0, capella, deneb} from "@lodestar/types";
 import {Logger, Map2d, Map2dArr} from "@lodestar/utils";
 import {computeStartSlotAtEpoch} from "@lodestar/state-transition";
 
-import {Metrics} from "../../metrics/index.js";
+import {RegistryMetricCreator} from "../../metrics/index.js";
 import {PeersData} from "../peers/peersData.js";
 import {ClientKind} from "../peers/client.js";
 import {GOSSIP_MAX_SIZE, GOSSIP_MAX_SIZE_BELLATRIX} from "../../constants/network.js";
 import {Eth2Context, Libp2p} from "../interface.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
+import {AttnetsService} from "../subnets/attnetsService.js";
 import {GossipBeaconNode, GossipTopic, GossipTopicMap, GossipType, GossipTypeMap} from "./interface.js";
 import {getGossipSSZType, GossipTopicCache, stringifyGossipTopic, getCoreTopicsAtFork} from "./topic.js";
 import {DataTransformSnappy, fastMsgIdFn, msgIdFn, msgIdToStrFn} from "./encoding.js";
+import {createEth2GossipsubMetrics, Eth2GossipsubMetrics} from "./metrics.js";
 
 import {
   computeGossipPeerScoreParams,
@@ -38,8 +40,9 @@ export type Eth2GossipsubModules = {
   config: BeaconConfig;
   libp2p: Libp2p;
   logger: Logger;
-  metrics: Metrics | null;
+  metricsRegister: RegistryMetricCreator | null;
   eth2Context: Eth2Context;
+  attnetsService: AttnetsService;
   peersData: PeersData;
   events: NetworkEventBus;
 };
@@ -72,6 +75,7 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
   private readonly logger: Logger;
   private readonly peersData: PeersData;
   private readonly events: NetworkEventBus;
+  private readonly attnetsService: AttnetsService;
 
   // Internal caches
   private readonly gossipTopicCache: GossipTopicCache;
@@ -81,7 +85,7 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     const gossipTopicCache = new GossipTopicCache(modules.config);
 
     const scoreParams = computeGossipPeerScoreParams(modules);
-    const {config, logger, metrics, peersData, events} = modules;
+    const {config, logger, metricsRegister, attnetsService, peersData, events} = modules;
 
     // Gossipsub parameters defined here:
     // https://github.com/ethereum/consensus-specs/blob/v1.1.10/specs/phase0/p2p-interface.md#the-gossip-domain-gossipsub
@@ -116,8 +120,8 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
       dataTransform: new DataTransformSnappy(
         isFinite(config.BELLATRIX_FORK_EPOCH) ? GOSSIP_MAX_SIZE_BELLATRIX : GOSSIP_MAX_SIZE
       ),
-      metricsRegister: modules.metrics ? ((modules.metrics.register as unknown) as MetricsRegister) : null,
-      metricsTopicStrToLabel: modules.metrics ? getMetricsTopicStrToLabel(modules.config) : undefined,
+      metricsRegister: metricsRegister as MetricsRegister | null,
+      metricsTopicStrToLabel: metricsRegister ? getMetricsTopicStrToLabel(config) : undefined,
       asyncValidation: true,
 
       maxOutboundBufferSize: MAX_OUTBOUND_BUFFER_SIZE,
@@ -126,10 +130,12 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     this.config = config;
     this.logger = logger;
     this.peersData = peersData;
+    this.attnetsService = attnetsService;
     this.events = events;
     this.gossipTopicCache = gossipTopicCache;
 
-    if (metrics) {
+    if (metricsRegister) {
+      const metrics = createEth2GossipsubMetrics(metricsRegister);
       metrics.gossipMesh.peersByType.addCollect(() => this.onScrapeLodestarMetrics(metrics));
     }
 
@@ -285,7 +291,7 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     return stringifyGossipTopic(this.config, topic);
   }
 
-  private onScrapeLodestarMetrics(metrics: Metrics): void {
+  private onScrapeLodestarMetrics(metrics: Eth2GossipsubMetrics): void {
     const mesh = this["mesh"] as Map<string, Set<string>>;
     const topics = this["topics"] as Map<string, Set<string>>;
     const peers = this["peers"] as Set<string>;
@@ -395,12 +401,18 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     // Get seenTimestamp before adding the message to the queue or add async delays
     const seenTimestampSec = Date.now() / 1000;
 
+    // Only beacon_attestation has conditional subscriptions
+    // TODO: Also syncnets?
+    const importUpToSlot =
+      topic.type === GossipType.beacon_attestation ? this.attnetsService.activeUpToSlot(topic.subnet) : null;
+
     // Emit message to network processor
     this.events.emit(NetworkEvent.pendingGossipsubMessage, {
       topic,
       msg,
       msgId,
       propagationSource,
+      importUpToSlot,
       seenTimestampSec,
       startProcessUnixSec: null,
     });
