@@ -73,7 +73,8 @@ export type NetworkWorkerData = {
 /**
  * API exposed by the libp2p worker
  */
-export type NetworkWorkerApi = Omit<NetworkCore, keyof GossipBeaconNode> & {
+export type NetworkWorkerApi = IBaseNetwork &
+  IReqRespBeaconNode & {
   publishGossipObject(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;
 
   // TODO: Gossip events

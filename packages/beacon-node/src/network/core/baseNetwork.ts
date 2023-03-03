@@ -53,10 +53,10 @@ export type BaseNetworkInit = {
   peerStoreDir: string;
   logger: Logger;
   metricsRegistry: Registry;
-  reqRespHandlers,
+  reqRespHandlers;
+  clock: LocalClock;
   networkEventBus: NetworkEventBus;
   activeValidatorCount: number;
-  genesisTime: number;
   status: phase0.Status;
 };
 
@@ -125,7 +125,7 @@ export class BaseNetwork implements IBaseNetwork {
     metricsRegistry,
     reqRespHandlers,
     networkEventBus,
-    genesisTime,
+    clock,
     activeValidatorCount,
     status,
   }: BaseNetworkInit): Promise<BaseNetwork> {
@@ -135,8 +135,6 @@ export class BaseNetwork implements IBaseNetwork {
       metricsRegistry: metricsRegistry ?? undefined,
     });
 
-    const controller = new AbortController();
-    const clock = new LocalClock({config, genesisTime, signal: controller.signal});
     const peersData = new PeersData();
     const peerRpcScores = new PeerRpcScoreStore(metrics);
     const statusCache = new LocalStatusCache(status);

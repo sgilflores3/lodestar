@@ -11,7 +11,7 @@ import {PendingGossipsubMessage} from "../processor/types.js";
 import {getReqRespHandlersEventBased} from "../reqresp/utils/handlerToEvents.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
 import {NetworkWorkerApi, NetworkWorkerData} from "./types.js";
-import {BaseNetwork} from "./badNameWorkerWrapper.js";
+import {BaseNetwork} from "./baseNetwork.js";
 
 // Cloned data from instatiation
 const workerData = worker.workerData as NetworkWorkerData;
@@ -39,7 +39,7 @@ const clock = new LocalClock({config, genesisTime: workerData.genesisTime, signa
 // ReqResp handles that transform internal async iterable into events
 const reqRespHandlers = getReqRespHandlersEventBased(networkEventBus);
 
-const badNameLibp2pWorker = await BaseNetwork.init({
+const baseNetwork = await BaseNetwork.init({
   opts: workerData.opts,
   config,
   peerId,
@@ -61,55 +61,55 @@ networkEventBus.on(NetworkEvent.pendingGossipsubMessage, (data) => {
 const libp2pWorkerApi: NetworkWorkerApi = {
   close() {
     abortController.abort();
-    return badNameLibp2pWorker.close();
+    return baseNetwork.close();
   },
+  scrapeMetrics: () => baseNetwork.scrapeMetrics(),
+
+  updateStatus: (status) => baseNetwork.updateStatus(status),
 
   publishGossipObject(topic, data, opts) {
-    return badNameLibp2pWorker.gossip.publish(topic, data, opts);
+    return baseNetwork.gossip.publish(topic, data, opts);
   },
-
-  pendingGossipsubMessage() {
-    return Observable.from(pendingGossipsubMessageSubject);
-  },
+  pendingGossipsubMessage: () => Observable.from(pendingGossipsubMessageSubject),
 
   // TODO: Should this just be events? Do they need to report errors back?
-  prepareBeaconCommitteeSubnets: async (subscriptions: CommitteeSubscription[]) =>
-    badNameLibp2pWorker.prepareBeaconCommitteeSubnet(subscriptions),
-  prepareSyncCommitteeSubnets: async (subscriptions: CommitteeSubscription[]) =>
-    badNameLibp2pWorker.prepareSyncCommitteeSubnets(subscriptions),
-  subscribeGossipCoreTopics: async (): Promise<void> => badNameLibp2pWorker.subscribeGossipCoreTopics(),
-  unsubscribeGossipCoreTopics: async (): Promise<void> => badNameLibp2pWorker.unsubscribeGossipCoreTopics(),
+  prepareBeaconCommitteeSubnets: (subscriptions: CommitteeSubscription[]) =>
+    baseNetwork.prepareBeaconCommitteeSubnets(subscriptions),
+  prepareSyncCommitteeSubnets: (subscriptions: CommitteeSubscription[]) =>
+    baseNetwork.prepareSyncCommitteeSubnets(subscriptions),
+  subscribeGossipCoreTopics: () => baseNetwork.subscribeGossipCoreTopics(),
+  unsubscribeGossipCoreTopics: () => baseNetwork.unsubscribeGossipCoreTopics(),
+  isSubscribedToGossipCoreTopics: () => baseNetwork.isSubscribedToGossipCoreTopics(),
 
   // ReqResp outgoing requests
 
-  status: (peerId, request) => badNameLibp2pWorker.reqResp.status(peerId, request),
-  goodbye: (peerId, request) => badNameLibp2pWorker.reqResp.goodbye(peerId, request),
-  ping: (peerId) => badNameLibp2pWorker.reqResp.ping(peerId),
-  metadata: (peerId) => badNameLibp2pWorker.reqResp.metadata(peerId),
+  status: (peerId, request) => baseNetwork.reqResp.status(peerId, request),
+  goodbye: (peerId, request) => baseNetwork.reqResp.goodbye(peerId, request),
+  ping: (peerId) => baseNetwork.reqResp.ping(peerId),
+  metadata: (peerId) => baseNetwork.reqResp.metadata(peerId),
   beaconBlockAndBlobsSidecarByRoot: (peerId, request) =>
-    badNameLibp2pWorker.reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
-  beaconBlocksByRange: (peerId, request) => badNameLibp2pWorker.reqResp.beaconBlocksByRange(peerId, request),
-  beaconBlocksByRoot: (peerId, request) => badNameLibp2pWorker.reqResp.beaconBlocksByRoot(peerId, request),
-  blobsSidecarsByRange: (peerId, request) => badNameLibp2pWorker.reqResp.blobsSidecarsByRange(peerId, request),
-  lightClientBootstrap: (peerId, request) => badNameLibp2pWorker.reqResp.lightClientBootstrap(peerId, request),
-  lightClientFinalityUpdate: (peerId) => badNameLibp2pWorker.reqResp.lightClientFinalityUpdate(peerId),
-  lightClientOptimisticUpdate: (peerId) => badNameLibp2pWorker.reqResp.lightClientOptimisticUpdate(peerId),
-  lightClientUpdatesByRange: (peerId, request) =>
-    badNameLibp2pWorker.reqResp.lightClientUpdatesByRange(peerId, request),
+    baseNetwork.reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
+  beaconBlocksByRange: (peerId, request) => baseNetwork.reqResp.beaconBlocksByRange(peerId, request),
+  beaconBlocksByRoot: (peerId, request) => baseNetwork.reqResp.beaconBlocksByRoot(peerId, request),
+  blobsSidecarsByRange: (peerId, request) => baseNetwork.reqResp.blobsSidecarsByRange(peerId, request),
+  lightClientBootstrap: (peerId, request) => baseNetwork.reqResp.lightClientBootstrap(peerId, request),
+  lightClientFinalityUpdate: (peerId) => baseNetwork.reqResp.lightClientFinalityUpdate(peerId),
+  lightClientOptimisticUpdate: (peerId) => baseNetwork.reqResp.lightClientOptimisticUpdate(peerId),
+  lightClientUpdatesByRange: (peerId, request) => baseNetwork.reqResp.lightClientUpdatesByRange(peerId, request),
 
   // Debug
 
-  getConnectionsByPeer: () => badNameLibp2pWorker.getConnectionsByPeer(),
-  getConnectedPeers: async () => badNameLibp2pWorker.getConnectedPeers(),
-  getConnectedPeerCount: async () => badNameLibp2pWorker.getConnectedPeerCount(),
-  connectToPeer: (peer, multiaddr) => badNameLibp2pWorker.connectToPeer(peer, multiaddr),
-  disconnectPeer: (peer) => badNameLibp2pWorker.disconnectPeer(peer),
-  dumpPeers: async () => badNameLibp2pWorker.dumpPeers(),
-  dumpPeer: async (peerIdStr) => badNameLibp2pWorker.dumpPeer(peerIdStr),
-  dumpPeerScoreStats: async () => badNameLibp2pWorker.dumpPeerScoreStats(),
-  dumpGossipPeerScoreStats: async () => badNameLibp2pWorker.dumpGossipPeerScoreStats(),
-  dumpDiscv5KadValues: async () => badNameLibp2pWorker.dumpDiscv5KadValues(),
-  dumpMeshPeers: async () => badNameLibp2pWorker.dumpMeshPeers(),
+  getNetworkIdentity: () => baseNetwork.getNetworkIdentity(),
+  getConnectedPeers: () => baseNetwork.getConnectedPeers(),
+  getConnectedPeerCount: () => baseNetwork.getConnectedPeerCount(),
+  connectToPeer: (peer, multiaddr) => baseNetwork.connectToPeer(peer, multiaddr),
+  disconnectPeer: (peer) => baseNetwork.disconnectPeer(peer),
+  dumpPeers: () => baseNetwork.dumpPeers(),
+  dumpPeer: (peerIdStr) => baseNetwork.dumpPeer(peerIdStr),
+  dumpPeerScoreStats: () => baseNetwork.dumpPeerScoreStats(),
+  dumpGossipPeerScoreStats: () => baseNetwork.dumpGossipPeerScoreStats(),
+  dumpDiscv5KadValues: () => baseNetwork.dumpDiscv5KadValues(),
+  dumpMeshPeers: () => baseNetwork.dumpMeshPeers(),
 };
 
 expose(libp2pWorkerApi);
