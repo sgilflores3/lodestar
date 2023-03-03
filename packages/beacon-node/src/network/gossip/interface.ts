@@ -1,6 +1,6 @@
 import {EventEmitter} from "events";
 import {Libp2p} from "libp2p";
-import {Message, TopicValidatorResult} from "@libp2p/interface-pubsub";
+import {Message, PublishResult, TopicValidatorResult} from "@libp2p/interface-pubsub";
 import StrictEventEmitter from "strict-event-emitter-types";
 import {PeerIdStr} from "@chainsafe/libp2p-gossipsub/types";
 import {ForkName} from "@lodestar/params";
@@ -122,25 +122,23 @@ export type GossipModules = {
   chain: IBeaconChain;
 };
 
-export type GossipPublishResult = Promise<number>;
-
 export type GossipBeaconNode = {
-  publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<GossipPublishResult>;
-  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<GossipPublishResult>;
-  publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<GossipPublishResult>;
-  publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<GossipPublishResult>;
-  publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<GossipPublishResult>;
-  publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<GossipPublishResult>;
-  publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<GossipPublishResult>;
-  publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<GossipPublishResult>;
-  publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<GossipPublishResult>;
-  publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<GossipPublishResult>;
+  publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<PublishResult>;
+  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<PublishResult>;
+  publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<PublishResult>;
+  publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<PublishResult>;
+  publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<PublishResult>;
+  publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<PublishResult>;
+  publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<PublishResult>;
+  publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<PublishResult>;
+  publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<PublishResult>;
+  publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<PublishResult>;
   publishLightClientFinalityUpdate(
     lightClientFinalityUpdate: allForks.LightClientFinalityUpdate
-  ): Promise<GossipPublishResult>;
+  ): Promise<PublishResult>;
   publishLightClientOptimisticUpdate(
-    lightClientOptimisitcUpdate: allForks.LightClientOptimisticUpdate
-  ): Promise<GossipPublishResult>;
+    lightClientOptimisticUpdate: allForks.LightClientOptimisticUpdate
+  ): Promise<PublishResult>;
 };
 
 /**

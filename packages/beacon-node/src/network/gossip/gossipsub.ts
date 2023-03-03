@@ -1,5 +1,5 @@
 import {PeerId} from "@libp2p/interface-peer-id";
-import {TopicValidatorResult} from "@libp2p/interface-pubsub";
+import {PublishResult, TopicValidatorResult} from "@libp2p/interface-pubsub";
 import {GossipSub, GossipsubEvents} from "@chainsafe/libp2p-gossipsub";
 import {PublishOpts, SignaturePolicy, TopicStr} from "@chainsafe/libp2p-gossipsub/types";
 import {PeerScore, PeerScoreParams} from "@chainsafe/libp2p-gossipsub/score";
@@ -162,14 +162,14 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     topic: GossipTopicMap[K],
     object: GossipTypeMap[K],
     opts?: PublishOpts | undefined
-  ): Promise<number> {
+  ): Promise<PublishResult> {
     const topicStr = this.getGossipTopicString(topic);
     const sszType = getGossipSSZType(topic);
     const messageData = (sszType.serialize as (object: GossipTypeMap[GossipType]) => Uint8Array)(object);
     const result = await this.publish(topicStr, messageData, opts);
     const sentPeers = result.recipients.length;
     this.logger.verbose("Publish to topic", {topic: topicStr, sentPeers});
-    return sentPeers;
+    return result;
   }
 
   /**
@@ -193,23 +193,23 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     this.unsubscribe(topicStr);
   }
 
-  async publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<void> {
+  async publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<PublishResult> {
     const fork = this.config.getForkName(signedBlock.message.slot);
-    await this.publishObject<GossipType.beacon_block>({type: GossipType.beacon_block, fork}, signedBlock, {
+    return this.publishObject<GossipType.beacon_block>({type: GossipType.beacon_block, fork}, signedBlock, {
       ignoreDuplicatePublishError: true,
     });
   }
 
-  async publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<void> {
+  async publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<PublishResult> {
     const fork = this.config.getForkName(item.beaconBlock.message.slot);
-    await this.publishObject<GossipType.beacon_block_and_blobs_sidecar>(
+    return this.publishObject<GossipType.beacon_block_and_blobs_sidecar>(
       {type: GossipType.beacon_block_and_blobs_sidecar, fork},
       item,
       {ignoreDuplicatePublishError: true}
     );
   }
 
-  async publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<number> {
+  async publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<PublishResult> {
     const fork = this.config.getForkName(aggregateAndProof.message.aggregate.data.slot);
     return this.publishObject<GossipType.beacon_aggregate_and_proof>(
       {type: GossipType.beacon_aggregate_and_proof, fork},
@@ -218,7 +218,7 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     );
   }
 
-  async publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<number> {
+  async publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<PublishResult> {
     const fork = this.config.getForkName(attestation.data.slot);
     return this.publishObject<GossipType.beacon_attestation>(
       {type: GossipType.beacon_attestation, fork, subnet},
@@ -227,57 +227,59 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
     );
   }
 
-  async publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<void> {
+  async publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<PublishResult> {
     const fork = this.config.getForkName(computeStartSlotAtEpoch(voluntaryExit.message.epoch));
-    await this.publishObject<GossipType.voluntary_exit>({type: GossipType.voluntary_exit, fork}, voluntaryExit, {
+    return this.publishObject<GossipType.voluntary_exit>({type: GossipType.voluntary_exit, fork}, voluntaryExit, {
       ignoreDuplicatePublishError: true,
     });
   }
 
-  async publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<void> {
+  async publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<PublishResult> {
     const fork = ForkName.capella;
-    await this.publishObject<GossipType.bls_to_execution_change>(
+    return this.publishObject<GossipType.bls_to_execution_change>(
       {type: GossipType.bls_to_execution_change, fork},
       blsToExecutionChange,
       {ignoreDuplicatePublishError: true}
     );
   }
 
-  async publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<void> {
+  async publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<PublishResult> {
     const fork = this.config.getForkName(Number(proposerSlashing.signedHeader1.message.slot as bigint));
-    await this.publishObject<GossipType.proposer_slashing>(
+    return this.publishObject<GossipType.proposer_slashing>(
       {type: GossipType.proposer_slashing, fork},
       proposerSlashing
     );
   }
 
-  async publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<void> {
+  async publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<PublishResult> {
     const fork = this.config.getForkName(Number(attesterSlashing.attestation1.data.slot as bigint));
-    await this.publishObject<GossipType.attester_slashing>(
+    return this.publishObject<GossipType.attester_slashing>(
       {type: GossipType.attester_slashing, fork},
       attesterSlashing
     );
   }
 
-  async publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<void> {
+  async publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<PublishResult> {
     const fork = this.config.getForkName(signature.slot);
-    await this.publishObject<GossipType.sync_committee>({type: GossipType.sync_committee, fork, subnet}, signature, {
+    return this.publishObject<GossipType.sync_committee>({type: GossipType.sync_committee, fork, subnet}, signature, {
       ignoreDuplicatePublishError: true,
     });
   }
 
-  async publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<void> {
+  async publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<PublishResult> {
     const fork = this.config.getForkName(contributionAndProof.message.contribution.slot);
-    await this.publishObject<GossipType.sync_committee_contribution_and_proof>(
+    return this.publishObject<GossipType.sync_committee_contribution_and_proof>(
       {type: GossipType.sync_committee_contribution_and_proof, fork},
       contributionAndProof,
       {ignoreDuplicatePublishError: true}
     );
   }
 
-  async publishLightClientFinalityUpdate(lightClientFinalityUpdate: allForks.LightClientFinalityUpdate): Promise<void> {
+  async publishLightClientFinalityUpdate(
+    lightClientFinalityUpdate: allForks.LightClientFinalityUpdate
+  ): Promise<PublishResult> {
     const fork = this.config.getForkName(lightClientFinalityUpdate.signatureSlot);
-    await this.publishObject<GossipType.light_client_finality_update>(
+    return this.publishObject<GossipType.light_client_finality_update>(
       {type: GossipType.light_client_finality_update, fork},
       lightClientFinalityUpdate
     );
@@ -285,9 +287,9 @@ export class Eth2Gossipsub extends GossipSub implements GossipBeaconNode {
 
   async publishLightClientOptimisticUpdate(
     lightClientOptimisitcUpdate: allForks.LightClientOptimisticUpdate
-  ): Promise<void> {
+  ): Promise<PublishResult> {
     const fork = this.config.getForkName(lightClientOptimisitcUpdate.signatureSlot);
-    await this.publishObject<GossipType.light_client_optimistic_update>(
+    return this.publishObject<GossipType.light_client_optimistic_update>(
       {type: GossipType.light_client_optimistic_update, fork},
       lightClientOptimisitcUpdate
     );
