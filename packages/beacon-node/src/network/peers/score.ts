@@ -2,6 +2,7 @@ import {PeerId} from "@libp2p/interface-peer-id";
 import {MapDef, pruneSetToMax} from "@lodestar/utils";
 import {gossipScoreThresholds, negativeGossipScoreIgnoreThreshold} from "../gossip/scoringParameters.js";
 import {Metrics} from "../../metrics/index.js";
+import {BaseNetworkMetrics} from "../core/metrics.js";
 
 /** The default score for new peers */
 const DEFAULT_SCORE = 0;
@@ -107,11 +108,11 @@ export type PeerScoreStat = {
  */
 export class PeerRpcScoreStore implements IPeerRpcScoreStore {
   private readonly scores = new MapDef<PeerIdStr, PeerScore>(() => new PeerScore());
-  private readonly metrics: Metrics | null;
+  private readonly metrics: BaseNetworkMetrics | null;
 
   // TODO: Persist scores, at least BANNED status to disk
 
-  constructor(metrics: Metrics | null = null) {
+  constructor(metrics: BaseNetworkMetrics | null = null) {
     this.metrics = metrics;
   }
 

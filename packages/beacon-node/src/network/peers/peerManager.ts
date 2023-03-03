@@ -7,7 +7,6 @@ import {BeaconConfig} from "@lodestar/config";
 import {allForks, altair, phase0} from "@lodestar/types";
 import {Logger} from "@lodestar/utils";
 import {GoodByeReasonCode, GOODBYE_KNOWN_CODES, Libp2pEvent} from "../../constants/index.js";
-import {Metrics} from "../../metrics/index.js";
 import {NetworkEvent, INetworkEventBus} from "../events.js";
 import {Libp2p} from "../interface.js";
 import {IReqRespBeaconNode, ReqRespMethod, RequestTypedContainer} from "../reqresp/ReqRespBeaconNode.js";
@@ -17,6 +16,7 @@ import {BeaconClock} from "../../chain/index.js";
 import {SubnetType} from "../metadata.js";
 import {Eth2Gossipsub} from "../gossip/gossipsub.js";
 import {StatusCache} from "../status.js";
+import {BaseNetworkMetrics} from "../core/metrics.js";
 import {PeersData, PeerData} from "./peersData.js";
 import {PeerDiscovery, SubnetDiscvQueryMs} from "./discover.js";
 import {IPeerRpcScoreStore, PeerScoreStats, ScoreState, updateGossipsubScores} from "./score.js";
@@ -84,7 +84,7 @@ export type PeerManagerOpts = {
 export type PeerManagerModules = {
   libp2p: Libp2p;
   logger: Logger;
-  metrics: Metrics | null;
+  metrics: BaseNetworkMetrics | null;
   reqResp: IReqRespBeaconNode;
   gossip: Eth2Gossipsub;
   attnetsService: SubnetsService;
@@ -116,7 +116,7 @@ enum RelevantPeerStatus {
 export class PeerManager {
   private readonly libp2p: Libp2p;
   private readonly logger: Logger;
-  private readonly metrics: Metrics | null;
+  private readonly metrics: BaseNetworkMetrics | null;
   private readonly reqResp: IReqRespBeaconNode;
   private readonly gossipsub: Eth2Gossipsub;
   private readonly attnetsService: SubnetsService;
@@ -639,7 +639,7 @@ export class PeerManager {
   }
 
   /** Register peer count metrics */
-  private async runPeerCountMetrics(metrics: Metrics): Promise<void> {
+  private async runPeerCountMetrics(metrics: BaseNetworkMetrics): Promise<void> {
     let total = 0;
 
     const peersByDirection = new Map<string, number>();

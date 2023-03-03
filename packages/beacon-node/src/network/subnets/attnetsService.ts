@@ -14,9 +14,9 @@ import {GossipType} from "../gossip/index.js";
 import {MetadataController} from "../metadata.js";
 import {SubnetMap, RequestedSubnet} from "../peers/utils/index.js";
 import {getActiveForks} from "../forks.js";
-import {Metrics} from "../../metrics/metrics.js";
 import {BeaconClock, ClockEvent} from "../../util/clock.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
+import {BaseNetworkMetrics} from "../core/metrics.js";
 import {IAttnetsService, CommitteeSubscription, SubnetsServiceOpts, RandBetweenFn, ShuffleFn} from "./interface.js";
 
 /**
@@ -66,7 +66,7 @@ export class AttnetsService implements IAttnetsService {
     private readonly events: NetworkEventBus,
     private readonly metadata: MetadataController,
     private readonly logger: Logger,
-    private readonly metrics: Metrics | null,
+    private readonly metrics: BaseNetworkMetrics | null,
     private readonly opts?: SubnetsServiceOpts
   ) {
     // if subscribeAllSubnets, we act like we have >= ATTESTATION_SUBNET_COUNT validators connecting to this node
@@ -352,7 +352,7 @@ export class AttnetsService implements IAttnetsService {
     );
   }
 
-  private onScrapeLodestarMetrics(metrics: Metrics): void {
+  private onScrapeLodestarMetrics(metrics: BaseNetworkMetrics): void {
     metrics.attnetsService.committeeSubnets.set(this.committeeSubnets.size);
     metrics.attnetsService.subscriptionsCommittee.set(this.subscriptionsCommittee.size);
     metrics.attnetsService.subscriptionsRandom.set(this.subscriptionsRandom.size);

@@ -29,6 +29,9 @@ export class MainThreadNetworkCore implements NetworkCore {
   async scrapeMetrics(): Promise<string> {
     return this.base.scrapeMetrics();
   }
+  async updateStatus(status: phase0.Status): Promise<void> {
+    return this.base.updateStatus(status);
+  }
   async prepareBeaconCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
     return this.base.prepareBeaconCommitteeSubnets(subscriptions);
   }

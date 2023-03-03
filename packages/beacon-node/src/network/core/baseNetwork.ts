@@ -1,7 +1,6 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {Connection} from "@libp2p/interface-connection";
-import {Registry} from "prom-client";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/dist/src/score/peer-score.js";
 import {BeaconConfig} from "@lodestar/config";
@@ -28,6 +27,8 @@ import {formatNodePeer} from "../../api/impl/node/utils.js";
 import {NetworkEventBus} from "../events.js";
 import {Discv5Worker} from "../discv5/index.js";
 import {LocalStatusCache} from "../status.js";
+import {RegistryMetricCreator} from "../../metrics/index.js";
+import {BaseNetworkMetrics, createBaseNetworkMetrics} from "./metrics.js";
 import {IBaseNetwork} from "./types.js";
 
 type Mods = {
@@ -43,6 +44,7 @@ type Mods = {
   config: BeaconConfig;
   clock: LocalClock;
   statusCache: LocalStatusCache;
+  metrics: BaseNetworkMetrics | null;
   opts: NetworkOptions;
 };
 
@@ -52,7 +54,7 @@ export type BaseNetworkInit = {
   peerId: PeerId;
   peerStoreDir: string;
   logger: Logger;
-  metricsRegistry: Registry;
+  metricsRegistry: RegistryMetricCreator;
   reqRespHandlers;
   clock: LocalClock;
   networkEventBus: NetworkEventBus;
@@ -92,6 +94,7 @@ export class BaseNetwork implements IBaseNetwork {
   private readonly config: BeaconConfig;
   private readonly clock: LocalClock;
   private readonly statusCache: LocalStatusCache;
+  private readonly metrics: BaseNetworkMetrics | null;
   private readonly opts: NetworkOptions;
 
   // Internal state
@@ -111,6 +114,7 @@ export class BaseNetwork implements IBaseNetwork {
     this.config = modules.config;
     this.clock = modules.clock;
     this.statusCache = modules.statusCache;
+    this.metrics = modules.metrics;
     this.opts = modules.opts;
 
     this.clock.on(ClockEvent.epoch, this.onEpoch);
@@ -135,6 +139,7 @@ export class BaseNetwork implements IBaseNetwork {
       metricsRegistry: metricsRegistry ?? undefined,
     });
 
+    const metrics = createBaseNetworkMetrics(metricsRegistry);
     const peersData = new PeersData();
     const peerRpcScores = new PeerRpcScoreStore(metrics);
     const statusCache = new LocalStatusCache(status);
@@ -160,7 +165,7 @@ export class BaseNetwork implements IBaseNetwork {
       config,
       libp2p,
       logger,
-      metrics,
+      metricsRegister: metricsRegistry,
       eth2Context: {
         activeValidatorCount,
         currentSlot: clock.currentSlot,
@@ -225,6 +230,7 @@ export class BaseNetwork implements IBaseNetwork {
       config,
       clock,
       statusCache,
+      metrics,
       opts,
     });
   }
@@ -252,7 +258,7 @@ export class BaseNetwork implements IBaseNetwork {
   }
 
   async scrapeMetrics(): Promise<string> {
-    throw new Error("TODO");
+    return (await this.metrics?.register.metrics()) ?? "";
   }
 
   async updateStatus(status: phase0.Status): Promise<void> {

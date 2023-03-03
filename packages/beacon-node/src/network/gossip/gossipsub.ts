@@ -14,7 +14,7 @@ import {RegistryMetricCreator} from "../../metrics/index.js";
 import {PeersData} from "../peers/peersData.js";
 import {ClientKind} from "../peers/client.js";
 import {GOSSIP_MAX_SIZE, GOSSIP_MAX_SIZE_BELLATRIX} from "../../constants/network.js";
-import {Eth2Context, Libp2p} from "../interface.js";
+import {Libp2p} from "../interface.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {AttnetsService} from "../subnets/attnetsService.js";
 import {GossipBeaconNode, GossipTopic, GossipTopicMap, GossipType, GossipTypeMap} from "./interface.js";
