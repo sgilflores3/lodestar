@@ -54,7 +54,7 @@ export type BaseNetworkInit = {
   peerId: PeerId;
   peerStoreDir: string;
   logger: Logger;
-  metricsRegistry: RegistryMetricCreator;
+  metricsRegistry: RegistryMetricCreator | null;
   reqRespHandlers;
   clock: LocalClock;
   networkEventBus: NetworkEventBus;
@@ -139,7 +139,7 @@ export class BaseNetwork implements IBaseNetwork {
       metricsRegistry: metricsRegistry ?? undefined,
     });
 
-    const metrics = createBaseNetworkMetrics(metricsRegistry);
+    const metrics = metricsRegistry ? createBaseNetworkMetrics(metricsRegistry) : null;
     const peersData = new PeersData();
     const peerRpcScores = new PeerRpcScoreStore(metrics);
     const statusCache = new LocalStatusCache(status);
