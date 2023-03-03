@@ -36,7 +36,11 @@ export class LocalClock
     this.timeoutId = setTimeout(this.onNextSlot, this.msUntilNextSlot());
     this.signal = signal;
     this._currentSlot = getCurrentSlot(this.config, this.genesisTime);
-    this.signal.addEventListener("abort", () => clearTimeout(this.timeoutId), {once: true});
+    this.signal.addEventListener("abort", () => this.close(), {once: true});
+  }
+
+  close(): void {
+    clearTimeout(this.timeoutId);
   }
 
   get currentSlot(): Slot {

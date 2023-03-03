@@ -1,18 +1,17 @@
 import {phase0} from "@lodestar/types";
 
-export interface ILocalStatusCache {
+export interface StatusCache {
   get(): phase0.Status;
 }
 
-export class LocalStatusCache implements ILocalStatusCache {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  constructor(private _localStatus: phase0.Status) {}
+export class LocalStatusCache implements StatusCache {
+  constructor(private status: phase0.Status) {}
 
   get(): phase0.Status {
-    return this._localStatus;
+    return this.status;
   }
 
   update(localStatus: phase0.Status): void {
-    this._localStatus = localStatus;
+    this.status = localStatus;
   }
 }

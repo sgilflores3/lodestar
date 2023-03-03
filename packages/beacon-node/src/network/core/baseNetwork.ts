@@ -1,11 +1,12 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {Connection} from "@libp2p/interface-connection";
+import {Registry} from "prom-client";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/dist/src/score/peer-score.js";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger} from "@lodestar/utils";
-import {Epoch} from "@lodestar/types";
+import {Epoch, phase0} from "@lodestar/types";
 import {ForkName} from "@lodestar/params";
 import {Libp2p} from "../interface.js";
 import {PeerManager} from "../peers/peerManager.js";
@@ -22,13 +23,12 @@ import {PeersData} from "../peers/peersData.js";
 import {PeerRpcScoreStore, PeerScoreStats} from "../peers/index.js";
 
 import {getConnectionsMap} from "../util.js";
-import {BeaconClock} from "../../chain/index.js";
-import {ClockEvent} from "../../chain/clock/LocalClock.js";
-import {NetworkInitModules} from "../network.js";
+import {ClockEvent, LocalClock} from "../../chain/clock/LocalClock.js";
 import {formatNodePeer} from "../../api/impl/node/utils.js";
-import { Registry } from "prom-client";
-import { NetworkEventBus } from "../events.js";
-import { IBaseNetwork } from "./types.js";
+import {NetworkEventBus} from "../events.js";
+import {Discv5Worker} from "../discv5/index.js";
+import {LocalStatusCache} from "../status.js";
+import {IBaseNetwork} from "./types.js";
 
 type Mods = {
   libp2p: Libp2p;
@@ -41,7 +41,8 @@ type Mods = {
   metadata: MetadataController;
   logger: Logger;
   config: BeaconConfig;
-  clock: BeaconClock;
+  clock: LocalClock;
+  statusCache: LocalStatusCache;
   opts: NetworkOptions;
 };
 
@@ -51,11 +52,12 @@ export type BaseNetworkInit = {
   peerId: PeerId;
   peerStoreDir: string;
   logger: Logger;
-  clock: BeaconClock;
   metricsRegistry: Registry;
   reqRespHandlers,
-  activeValidatorCount: number;
   networkEventBus: NetworkEventBus;
+  activeValidatorCount: number;
+  genesisTime: number;
+  status: phase0.Status;
 };
 
 /**
@@ -88,7 +90,8 @@ export class BaseNetwork implements IBaseNetwork {
   private readonly metadata: MetadataController;
   private readonly logger: Logger;
   private readonly config: BeaconConfig;
-  private readonly clock: BeaconClock;
+  private readonly clock: LocalClock;
+  private readonly statusCache: LocalStatusCache;
   private readonly opts: NetworkOptions;
 
   // Internal state
@@ -107,10 +110,10 @@ export class BaseNetwork implements IBaseNetwork {
     this.logger = modules.logger;
     this.config = modules.config;
     this.clock = modules.clock;
+    this.statusCache = modules.statusCache;
     this.opts = modules.opts;
 
-    // TODO: Should un-subscribe? Worker is dropped on close
-    this.clock.on(ClockEvent.epoch, this.onEpoch.bind(this));
+    this.clock.on(ClockEvent.epoch, this.onEpoch);
   }
 
   static async init({
@@ -119,11 +122,12 @@ export class BaseNetwork implements IBaseNetwork {
     peerId,
     peerStoreDir,
     logger,
-    clock,
     metricsRegistry,
     reqRespHandlers,
-    activeValidatorCount,
     networkEventBus,
+    genesisTime,
+    activeValidatorCount,
+    status,
   }: BaseNetworkInit): Promise<BaseNetwork> {
     const libp2p = await createNodeJsLibp2p(peerId, opts, {
       peerStoreDir,
@@ -131,9 +135,20 @@ export class BaseNetwork implements IBaseNetwork {
       metricsRegistry: metricsRegistry ?? undefined,
     });
 
+    const controller = new AbortController();
+    const clock = new LocalClock({config, genesisTime, signal: controller.signal});
     const peersData = new PeersData();
     const peerRpcScores = new PeerRpcScoreStore(metrics);
-    const metadata = new MetadataController({}, {config, clock, logger});
+    const statusCache = new LocalStatusCache(status);
+
+    // Bind discv5's ENR to local metadata
+    // resolve circular dependency by setting `discv5` variable after the peer manager is instantiated
+    // eslint-disable-next-line prefer-const
+    let discv5: Discv5Worker | undefined;
+    const onMetadataSetValue = function onMetadataSetValue(key: string, value: Uint8Array): void {
+      discv5?.setEnrValue(key, value).catch((e) => logger.error("error on setEnrValue", {key}, e));
+    };
+    const metadata = new MetadataController({}, {config, onSetValue: onMetadataSetValue, logger});
 
     const reqResp = new ReqRespBeaconNode(
       {config, libp2p, reqRespHandlers, metadata, peerRpcScores, logger, networkEventBus, metrics, peersData},
@@ -172,6 +187,7 @@ export class BaseNetwork implements IBaseNetwork {
         peerRpcScores,
         networkEventBus,
         peersData,
+        statusCache,
       },
       opts
     );
@@ -193,12 +209,10 @@ export class BaseNetwork implements IBaseNetwork {
     await peerManager.start();
 
     // Bind discv5's ENR to local metadata
-    const discv5 = peerManager["discovery"]?.discv5;
-    const onMetadataSetValue = function onMetadataSetValue(key: string, value: Uint8Array): void {
-      discv5?.setEnrValue(key, value).catch((e) => logger.error("error on setEnrValue", {key}, e));
-    };
+    discv5 = peerManager["discovery"]?.discv5;
+
     // Initialize ENR with clock's fork
-    metadata.upstreamValues(onMetadataSetValue, clock.currentSlot);
+    metadata.upstreamValues(clock.currentEpoch);
 
     return new BaseNetwork({
       libp2p,
@@ -212,6 +226,7 @@ export class BaseNetwork implements IBaseNetwork {
       logger,
       config,
       clock,
+      statusCache,
       opts,
     });
   }
@@ -219,6 +234,9 @@ export class BaseNetwork implements IBaseNetwork {
   /** Destroy this instance. Can only be called once. */
   async close(): Promise<void> {
     if (this.closed) return;
+
+    this.clock.off(ClockEvent.epoch, this.onEpoch);
+    this.clock.close();
 
     // Must goodbye and disconnect before stopping libp2p
     await this.peerManager.goodbyeAndDisconnectAllPeers();
@@ -237,6 +255,10 @@ export class BaseNetwork implements IBaseNetwork {
 
   async scrapeMetrics(): Promise<string> {
     throw new Error("TODO");
+  }
+
+  async updateStatus(status: phase0.Status): Promise<void> {
+    this.statusCache.update(status);
   }
 
   /**

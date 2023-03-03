@@ -3,11 +3,11 @@ import {Connection} from "@libp2p/interface-connection";
 import {Registrar} from "@libp2p/interface-registrar";
 import {PeerId} from "@libp2p/interface-peer-id";
 import {ConnectionManager} from "@libp2p/interface-connection-manager";
+import {PublishResult} from "@libp2p/interface-pubsub";
 import {phase0} from "@lodestar/types";
 import {BlockInput} from "../chain/blocks/types.js";
 import {INetworkEventBus} from "./events.js";
 import {PeerAction} from "./peers/index.js";
-import {GossipPublishResult} from "./gossip/interface.js";
 import {NetworkCore} from "./core/types.js";
 
 /**
@@ -27,7 +27,7 @@ export interface INetwork extends NetworkCore {
 
   // TODO move these pubsub / reqresp methods into their respective modules (?)
   // Or move the other methods up to this level (?)
-  publishBeaconBlockMaybeBlobs(signedBlock: BlockInput): Promise<GossipPublishResult>;
+  publishBeaconBlockMaybeBlobs(signedBlock: BlockInput): Promise<PublishResult>;
   beaconBlocksMaybeBlobsByRange(peerId: PeerId, request: phase0.BeaconBlocksByRangeRequest): Promise<BlockInput[]>;
   beaconBlocksMaybeBlobsByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<BlockInput[]>;
 

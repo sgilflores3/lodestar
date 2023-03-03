@@ -5,6 +5,7 @@ import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {Observable} from "@chainsafe/threads/observable";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
+import {phase0} from "@lodestar/types";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {NetworkOptions} from "../options.js";
 import {IReqRespBeaconNode} from "../reqresp/interface.js";
@@ -15,6 +16,9 @@ import {PeerScoreStats} from "../peers/index.js";
 export interface IBaseNetwork {
   close(): Promise<void>;
   scrapeMetrics(): Promise<string>;
+
+  // chain updates
+  updateStatus(status: phase0.Status): Promise<void>;
 
   // Peer manager control
   /** Subscribe, search peers, join long-lived attnets */

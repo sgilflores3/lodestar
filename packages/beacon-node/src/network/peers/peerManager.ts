@@ -16,7 +16,7 @@ import {SubnetsService} from "../subnets/index.js";
 import {BeaconClock} from "../../chain/index.js";
 import {SubnetType} from "../metadata.js";
 import {Eth2Gossipsub} from "../gossip/gossipsub.js";
-import {ILocalStatusCache} from "../status.js";
+import {StatusCache} from "../status.js";
 import {PeersData, PeerData} from "./peersData.js";
 import {PeerDiscovery, SubnetDiscvQueryMs} from "./discover.js";
 import {IPeerRpcScoreStore, PeerScoreStats, ScoreState, updateGossipsubScores} from "./score.js";
@@ -94,7 +94,7 @@ export type PeerManagerModules = {
   peerRpcScores: IPeerRpcScoreStore;
   networkEventBus: INetworkEventBus;
   peersData: PeersData;
-  localStatusCache: ILocalStatusCache;
+  statusCache: StatusCache;
 };
 
 type PeerIdStr = string;
@@ -127,7 +127,7 @@ export class PeerManager {
   /** If null, discovery is disabled */
   private readonly discovery: PeerDiscovery | null;
   private readonly networkEventBus: INetworkEventBus;
-  private readonly localStatusCache: ILocalStatusCache;
+  private readonly statusCache: StatusCache;
 
   // A single map of connected peers with all necessary data to handle PINGs, STATUS, and metrics
   private connectedPeers: Map<PeerIdStr, PeerData>;
@@ -147,7 +147,7 @@ export class PeerManager {
     this.config = modules.config;
     this.peerRpcScores = modules.peerRpcScores;
     this.networkEventBus = modules.networkEventBus;
-    this.localStatusCache = modules.localStatusCache;
+    this.statusCache = modules.statusCache;
     this.connectedPeers = modules.peersData.connectedPeers;
     this.opts = opts;
 
@@ -319,7 +319,7 @@ export class PeerManager {
     // reset the to-status timer of this peer
     const peerData = this.connectedPeers.get(peer.toString());
     if (peerData) peerData.lastStatusUnixTsMs = Date.now();
-    const localStatus = this.localStatusCache.get();
+    const localStatus = this.statusCache.get();
 
     let isIrrelevant: boolean;
     try {
@@ -389,7 +389,7 @@ export class PeerManager {
 
   private async requestStatusMany(peers: PeerId[]): Promise<void> {
     try {
-      const localStatus = this.localStatusCache.get();
+      const localStatus = this.statusCache.get();
       await Promise.all(peers.map(async (peer) => this.requestStatus(peer, localStatus)));
     } catch (e) {
       this.logger.verbose("Error requesting new status to peers", {}, e as Error);
@@ -577,7 +577,7 @@ export class PeerManager {
     if (direction === "outbound") {
       //this.pingAndStatusTimeouts();
       void this.requestPing(peer);
-      void this.requestStatus(peer, this.localStatusCache.get());
+      void this.requestStatus(peer, this.statusCache.get());
     }
 
     // AgentVersion was set in libp2p IdentifyService, 'peer:connect' event handler
