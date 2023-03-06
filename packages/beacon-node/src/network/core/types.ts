@@ -10,7 +10,6 @@ import {PendingGossipsubMessage} from "../processor/types.js";
 import {NetworkOptions} from "../options.js";
 import {IReqRespBeaconNode} from "../reqresp/interface.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
-import {GossipBeaconNode} from "../gossip/interface.js";
 import {PeerScoreStats} from "../peers/index.js";
 
 export interface IBaseNetwork {
@@ -32,6 +31,7 @@ export interface IBaseNetwork {
   getNetworkIdentity(): Promise<routes.node.NetworkIdentity>;
 
   // Gossip control
+  publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;
   subscribeGossipCoreTopics(): Promise<void>;
   unsubscribeGossipCoreTopics(): Promise<void>;
   isSubscribedToGossipCoreTopics(): Promise<boolean>;
@@ -52,7 +52,7 @@ export interface IBaseNetwork {
  *
  * All properties/methods should be async to allow for a worker implementation
  */
-export interface NetworkCore extends IBaseNetwork, IReqRespBeaconNode, GossipBeaconNode {}
+export interface NetworkCore extends IBaseNetwork, IReqRespBeaconNode {}
 
 /**
  * libp2p worker contructor (start-up) data
@@ -75,13 +75,11 @@ export type NetworkWorkerData = {
  */
 export type NetworkWorkerApi = IBaseNetwork &
   IReqRespBeaconNode & {
-  publishGossipObject(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;
+    // TODO: Gossip events
+    // Main -> Worker: NetworkEvent.gossipMessageValidationResult
+    // Worker -> Main: NetworkEvent.pendingGossipsubMessage
+    pendingGossipsubMessage(): Observable<PendingGossipsubMessage>;
 
-  // TODO: Gossip events
-  // Main -> Worker: NetworkEvent.gossipMessageValidationResult
-  // Worker -> Main: NetworkEvent.pendingGossipsubMessage
-  pendingGossipsubMessage(): Observable<PendingGossipsubMessage>;
-
-  // TODO: ReqResp outgoing
-  // TODO: ReqResp incoming
-};
+    // TODO: ReqResp outgoing
+    // TODO: ReqResp incoming
+  };

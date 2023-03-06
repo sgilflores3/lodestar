@@ -14,7 +14,7 @@ import {GossipType} from "../gossip/index.js";
 import {MetadataController} from "../metadata.js";
 import {SubnetMap, RequestedSubnet} from "../peers/utils/index.js";
 import {getActiveForks} from "../forks.js";
-import {BeaconClock, ClockEvent} from "../../util/clock.js";
+import {ClockEvent, LocalClock} from "../../chain/clock/index.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {BaseNetworkMetrics} from "../core/metrics.js";
 import {IAttnetsService, CommitteeSubscription, SubnetsServiceOpts, RandBetweenFn, ShuffleFn} from "./interface.js";
@@ -62,7 +62,7 @@ export class AttnetsService implements IAttnetsService {
 
   constructor(
     private readonly config: ChainForkConfig,
-    private readonly clock: BeaconClock,
+    private readonly clock: LocalClock,
     private readonly events: NetworkEventBus,
     private readonly metadata: MetadataController,
     private readonly logger: Logger,

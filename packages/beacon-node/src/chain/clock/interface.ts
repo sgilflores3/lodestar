@@ -1,4 +1,14 @@
-import {Epoch, Slot} from "@lodestar/types";
+import type {Epoch, Slot} from "@lodestar/types";
+
+export const enum ClockEvent {
+  slot = "clock:slot",
+  epoch = "clock:epoch",
+}
+
+export type ClockEvents = {
+  [ClockEvent.slot]: (slot: Slot) => void;
+  [ClockEvent.epoch]: (epoch: Epoch) => void;
+};
 
 /**
  * Tracks the current chain time, measured in `Slot`s and `Epoch`s

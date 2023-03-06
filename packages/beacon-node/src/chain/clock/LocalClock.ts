@@ -5,17 +5,8 @@ import {ChainConfig} from "@lodestar/config";
 import {ErrorAborted} from "@lodestar/utils";
 import {computeEpochAtSlot, computeTimeAtSlot, getCurrentSlot} from "@lodestar/state-transition";
 import {MAXIMUM_GOSSIP_CLOCK_DISPARITY} from "../../constants/index.js";
-import {BeaconClock} from "./interface.js";
-
-export const enum ClockEvent {
-  slot = "clock:slot",
-  epoch = "clock:epoch",
-}
-
-export type ClockEvents = {
-  [ClockEvent.slot]: (slot: Slot) => void;
-  [ClockEvent.epoch]: (epoch: Epoch) => void;
-};
+import {ChainEvent, ChainEventEmitter} from "../emitter.js";
+import {BeaconClock, ClockEvent, ClockEvents} from "./interface.js";
 
 /**
  * A local clock, the clock time is assumed to be trusted
@@ -25,13 +16,25 @@ export class LocalClock
   implements BeaconClock {
   readonly genesisTime: number;
   private readonly config: ChainConfig;
+  private readonly emitter?: ChainEventEmitter;
   private timeoutId: number | NodeJS.Timeout;
   private readonly signal: AbortSignal;
   private _currentSlot: number;
 
-  constructor({config, genesisTime, signal}: {config: ChainConfig; genesisTime: number; signal: AbortSignal}) {
+  constructor({
+    config,
+    emitter,
+    genesisTime,
+    signal,
+  }: {
+    config: ChainConfig;
+    emitter?: ChainEventEmitter;
+    genesisTime: number;
+    signal: AbortSignal;
+  }) {
     super();
     this.config = config;
+    this.emitter = emitter;
     this.genesisTime = genesisTime;
     this.timeoutId = setTimeout(this.onNextSlot, this.msUntilNextSlot());
     this.signal = signal;
@@ -143,12 +146,14 @@ export class LocalClock
       this._currentSlot++;
 
       this.emit(ClockEvent.slot, this._currentSlot);
+      this.emitter?.emit(ChainEvent.clockSlot, this._currentSlot);
 
       const previousEpoch = computeEpochAtSlot(previousSlot);
       const currentEpoch = computeEpochAtSlot(this._currentSlot);
 
       if (previousEpoch < currentEpoch) {
         this.emit(ClockEvent.epoch, currentEpoch);
+        this.emitter?.emit(ChainEvent.clockEpoch, currentEpoch);
       }
     }
     //recursively invoke onNextSlot

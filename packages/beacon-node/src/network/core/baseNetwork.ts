@@ -1,15 +1,17 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {Connection} from "@libp2p/interface-connection";
+import {PublishResult} from "@libp2p/interface-pubsub";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/dist/src/score/peer-score.js";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger} from "@lodestar/utils";
 import {Epoch, phase0} from "@lodestar/types";
 import {ForkName} from "@lodestar/params";
+import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {Libp2p} from "../interface.js";
 import {PeerManager} from "../peers/peerManager.js";
-import {ReqRespBeaconNode} from "../reqresp/ReqRespBeaconNode.js";
+import {ReqRespBeaconNode, ReqRespHandlers} from "../reqresp/ReqRespBeaconNode.js";
 import {Eth2Gossipsub, getCoreTopicsAtFork} from "../gossip/index.js";
 import {AttnetsService} from "../subnets/attnetsService.js";
 import {SyncnetsService} from "../subnets/syncnetsService.js";
@@ -22,7 +24,7 @@ import {PeersData} from "../peers/peersData.js";
 import {PeerRpcScoreStore, PeerScoreStats} from "../peers/index.js";
 
 import {getConnectionsMap} from "../util.js";
-import {ClockEvent, LocalClock} from "../../chain/clock/LocalClock.js";
+import {ClockEvent, LocalClock} from "../../chain/clock/index.js";
 import {formatNodePeer} from "../../api/impl/node/utils.js";
 import {NetworkEventBus} from "../events.js";
 import {Discv5Worker} from "../discv5/index.js";
@@ -52,10 +54,10 @@ export type BaseNetworkInit = {
   opts: NetworkOptions;
   config: BeaconConfig;
   peerId: PeerId;
-  peerStoreDir: string;
+  peerStoreDir: string | undefined;
   logger: Logger;
   metricsRegistry: RegistryMetricCreator | null;
-  reqRespHandlers;
+  reqRespHandlers: ReqRespHandlers;
   clock: LocalClock;
   networkEventBus: NetworkEventBus;
   activeValidatorCount: number;
@@ -276,6 +278,10 @@ export class BaseNetwork implements IBaseNetwork {
   async prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
     this.syncnetsService.addCommitteeSubscriptions(subscriptions);
     if (subscriptions.length > 0) this.peerManager.onCommitteeSubscriptions();
+  }
+
+  async publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult> {
+    return this.gossip.publish(topic, data, opts);
   }
 
   /**

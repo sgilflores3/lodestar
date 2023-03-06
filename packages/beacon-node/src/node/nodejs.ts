@@ -10,8 +10,7 @@ import {BeaconStateAllForks} from "@lodestar/state-transition";
 import {ProcessShutdownCallback} from "@lodestar/validator";
 
 import {IBeaconDb} from "../db/index.js";
-import {INetwork, Network, getReqRespHandlers, NetworkEventBus} from "../network/index.js";
-import {NetworkProcessor} from "../network/processor/index.js";
+import {INetwork, Network, getReqRespHandlers} from "../network/index.js";
 import {BeaconSync, IBeaconSync} from "../sync/index.js";
 import {BackfillSync} from "../sync/backfill/index.js";
 import {BeaconChain, IBeaconChain, initBeaconMetrics} from "../chain/index.js";
@@ -213,8 +212,6 @@ export class BeaconNode {
     // Load persisted data from disk to in-memory caches
     await chain.loadFromDisk();
 
-    const networkEventBus = new NetworkEventBus();
-
     // Network needs to be initialized before the sync
     // See https://github.com/ChainSafe/lodestar/issues/4543
     const network = await Network.init({
@@ -229,11 +226,6 @@ export class BeaconNode {
       reqRespHandlers: getReqRespHandlers({db, chain}),
       signal,
     });
-
-    const networkProcessor = new NetworkProcessor(
-      {chain, db, config, logger, metrics, events: networkEventBus},
-      opts.network
-    );
 
     const sync = new BeaconSync(opts.sync, {
       config,
@@ -274,7 +266,7 @@ export class BeaconNode {
       ? new HttpMetricsServer(opts.metrics, {
           register: metrics.register,
           getOtherMetrics: async (): Promise<string> => {
-            return network.metrics();
+            return network.scrapeMetrics();
           },
           logger: logger.child({module: LoggerModule.metrics}),
         })

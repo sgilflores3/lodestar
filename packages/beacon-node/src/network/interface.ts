@@ -9,6 +9,8 @@ import {BlockInput} from "../chain/blocks/types.js";
 import {INetworkEventBus} from "./events.js";
 import {PeerAction} from "./peers/index.js";
 import {NetworkCore} from "./core/types.js";
+import {GossipBeaconNode, GossipType} from "./gossip/interface.js";
+import {PendingGossipsubMessage} from "./processor/types.js";
 
 /**
  * The architecture of the network looks like so:
@@ -19,11 +21,24 @@ import {NetworkCore} from "./core/types.js";
  * - INetwork - This interface extends NetworkCore and crucially allows for a connection to the BeaconChain module.
  */
 
-export interface INetwork extends NetworkCore {
+export interface INetwork
+  extends Omit<
+      NetworkCore,
+      | "updateStatus"
+      | "publishGossip"
+      | "getConnectedPeers"
+      | "getConnectedPeerCount"
+      | "isSubscribedToGossipCoreTopics"
+    >,
+    GossipBeaconNode {
   /** Our network identity */
   peerId: PeerId;
 
   events: INetworkEventBus;
+
+  getConnectedPeers(): PeerId[];
+  getConnectedPeerCount(): number;
+  isSubscribedToGossipCoreTopics(): boolean;
 
   // TODO move these pubsub / reqresp methods into their respective modules (?)
   // Or move the other methods up to this level (?)
@@ -33,6 +48,8 @@ export interface INetwork extends NetworkCore {
 
   reStatusPeers(peers: PeerId[]): Promise<void>;
   reportPeer(peer: PeerId, action: PeerAction, actionName: string): void;
+
+  dumpGossipQueue(gossipType: GossipType): Promise<PendingGossipsubMessage[]>;
 }
 
 export type PeerDirection = Connection["stat"]["direction"];

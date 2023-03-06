@@ -50,6 +50,7 @@ const baseNetwork = await BaseNetwork.init({
   reqRespHandlers,
   activeValidatorCount: workerData.activeValidatorCount,
   networkEventBus,
+  status,
 });
 
 const pendingGossipsubMessageSubject = new Subject<PendingGossipsubMessage>();
@@ -67,7 +68,7 @@ const libp2pWorkerApi: NetworkWorkerApi = {
 
   updateStatus: (status) => baseNetwork.updateStatus(status),
 
-  publishGossipObject(topic, data, opts) {
+  publishGossip(topic, data, opts) {
     return baseNetwork.gossip.publish(topic, data, opts);
   },
   pendingGossipsubMessage: () => Observable.from(pendingGossipsubMessageSubject),

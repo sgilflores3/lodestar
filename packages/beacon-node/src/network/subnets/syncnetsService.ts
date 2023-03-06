@@ -7,7 +7,7 @@ import {getActiveForks} from "../forks.js";
 import {GossipType} from "../gossip/index.js";
 import {MetadataController} from "../metadata.js";
 import {RequestedSubnet, SubnetMap} from "../peers/utils/index.js";
-import {BeaconClock, ClockEvent} from "../../util/clock.js";
+import {ClockEvent, LocalClock} from "../../chain/clock/index.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {BaseNetworkMetrics} from "../core/metrics.js";
 import {CommitteeSubscription, SubnetsService, SubnetsServiceOpts} from "./interface.js";
@@ -30,7 +30,7 @@ export class SyncnetsService implements SubnetsService {
 
   constructor(
     private readonly config: BeaconConfig,
-    private readonly clock: BeaconClock,
+    private readonly clock: LocalClock,
     private readonly events: NetworkEventBus,
     private readonly metadata: MetadataController,
     private readonly logger: Logger,

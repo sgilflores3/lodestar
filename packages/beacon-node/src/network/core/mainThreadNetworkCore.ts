@@ -2,8 +2,9 @@ import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {PublishResult} from "@libp2p/interface-pubsub";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
-import {allForks, altair, capella, deneb, phase0} from "@lodestar/types";
+import {allForks, altair, deneb, phase0} from "@lodestar/types";
 import {routes} from "@lodestar/api";
+import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {CommitteeSubscription} from "../subnets/interface.js";
 import {PeerScoreStats} from "../peers/index.js";
 import {NetworkCore} from "./types.js";
@@ -128,44 +129,7 @@ export class MainThreadNetworkCore implements NetworkCore {
   ): Promise<allForks.LightClientUpdate[]> {
     return this.base.reqResp.lightClientUpdatesByRange(peerId, request);
   }
-  async publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<PublishResult> {
-    return this.base.gossip.publishBeaconBlock(signedBlock);
-  }
-  async publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<PublishResult> {
-    return this.base.gossip.publishSignedBeaconBlockAndBlobsSidecar(item);
-  }
-  async publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<PublishResult> {
-    return this.base.gossip.publishBeaconAggregateAndProof(aggregateAndProof);
-  }
-  async publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<PublishResult> {
-    return this.base.gossip.publishBeaconAttestation(attestation, subnet);
-  }
-  async publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<PublishResult> {
-    return this.base.gossip.publishVoluntaryExit(voluntaryExit);
-  }
-  async publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<PublishResult> {
-    return this.base.gossip.publishBlsToExecutionChange(blsToExecutionChange);
-  }
-  async publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<PublishResult> {
-    return this.base.gossip.publishProposerSlashing(proposerSlashing);
-  }
-  async publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<PublishResult> {
-    return this.base.gossip.publishAttesterSlashing(attesterSlashing);
-  }
-  async publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<PublishResult> {
-    return this.base.gossip.publishSyncCommitteeSignature(signature, subnet);
-  }
-  async publishContributionAndProof(contributionAndProof: altair.SignedContributionAndProof): Promise<PublishResult> {
-    return this.base.gossip.publishContributionAndProof(contributionAndProof);
-  }
-  async publishLightClientFinalityUpdate(
-    lightClientFinalityUpdate: allForks.LightClientFinalityUpdate
-  ): Promise<PublishResult> {
-    return this.base.gossip.publishLightClientFinalityUpdate(lightClientFinalityUpdate);
-  }
-  async publishLightClientOptimisticUpdate(
-    lightClientOptimisticUpdate: allForks.LightClientOptimisticUpdate
-  ): Promise<PublishResult> {
-    return this.base.gossip.publishLightClientOptimisticUpdate(lightClientOptimisticUpdate);
+  async publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult> {
+    return this.base.publishGossip(topic, data, opts);
   }
 }

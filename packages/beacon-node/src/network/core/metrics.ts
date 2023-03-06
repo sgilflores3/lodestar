@@ -9,6 +9,10 @@ export function createBaseNetworkMetrics(register: RegistryMetricCreator) {
 
     // Peers
 
+    peers: register.gauge({
+      name: "libp2p_peers",
+      help: "number of connected peers",
+    }),
     peersByDirection: register.gauge<"direction">({
       name: "lodestar_peers_by_direction_count",
       help: "number of peers, labeled by direction",
