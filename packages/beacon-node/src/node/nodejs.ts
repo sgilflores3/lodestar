@@ -206,7 +206,7 @@ export class BeaconNode {
       }),
       executionEngine: initializeExecutionEngine(opts.executionEngine, {metrics, signal}),
       executionBuilder: opts.executionBuilder.enabled
-        ? initializeExecutionBuilder(opts.executionBuilder, config)
+        ? initializeExecutionBuilder(opts.executionBuilder, config, metrics)
         : undefined,
     });
 

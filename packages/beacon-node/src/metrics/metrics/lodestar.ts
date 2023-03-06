@@ -1102,6 +1102,13 @@ export function createLodestarMetrics(
         // Provide max resolution on problematic values around 1 second
         buckets: [0.1, 0.5, 1, 2, 5, 15],
       }),
+      streamTime: register.histogram<"routeId">({
+        name: "lodestar_eth1_http_client_stream_time_seconds",
+        help: "eth1 JsonHttpClient - streaming time by routeId",
+        labelNames: ["routeId"],
+        // Provide max resolution on problematic values around 1 second
+        buckets: [0.1, 0.5, 1, 2, 5, 15],
+      }),
       requestErrors: register.gauge<"routeId">({
         name: "lodestar_eth1_http_client_request_errors_total",
         help: "eth1 JsonHttpClient - total count of request errors",
@@ -1136,6 +1143,13 @@ export function createLodestarMetrics(
         // Provide max resolution on problematic values around 1 second
         buckets: [0.1, 0.5, 1, 2, 5, 15],
       }),
+      streamTime: register.histogram<"routeId">({
+        name: "lodestar_execution_engine_http_client_stream_time_seconds",
+        help: "ExecutionEngineHttp client - streaming time by routeId",
+        labelNames: ["routeId"],
+        // Provide max resolution on problematic values around 1 second
+        buckets: [0.1, 0.5, 1, 2, 5, 15],
+      }),
       requestErrors: register.gauge<"routeId">({
         name: "lodestar_execution_engine_http_client_request_errors_total",
         help: "ExecutionEngineHttp client - total count of request errors",
@@ -1159,6 +1173,34 @@ export function createLodestarMetrics(
       configUrlsCount: register.gauge({
         name: "lodestar_execution_engine_http_client_config_urls_count",
         help: "ExecutionEngineHttp client - static config urls count",
+      }),
+    },
+
+    builderHttpClient: {
+      requestTime: register.histogram<"routeId">({
+        name: "vc_builder_http_client_request_time_seconds",
+        help: "Histogram of builder http client request time by routeId",
+        labelNames: ["routeId"],
+        // Expected times are ~ 50-500ms, but in an overload NodeJS they can be greater
+        buckets: [0.01, 0.1, 1, 5],
+      }),
+
+      requestErrors: register.gauge<"routeId">({
+        name: "vc_builder_http_client_request_errors_total",
+        help: "Total count of errors on builder http client requests by routeId",
+        labelNames: ["routeId"],
+      }),
+
+      requestToFallbacks: register.gauge<"routeId">({
+        name: "vc_builder_http_client_request_to_fallbacks_total",
+        help: "Total count of requests to fallback URLs on builder http API by routeId",
+        labelNames: ["routeId"],
+      }),
+
+      urlsScore: register.gauge<"urlIndex">({
+        name: "vc_builder_http_client_urls_score",
+        help: "Current score of builder http URLs by url index",
+        labelNames: ["urlIndex"],
       }),
     },
 
