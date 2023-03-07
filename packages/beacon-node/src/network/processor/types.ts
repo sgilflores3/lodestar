@@ -27,10 +27,11 @@ export type ReqRespIncomingRequest = {
   payload: ReqRespRequestPayload;
 };
 
-export type ReqRespRequestPayload =
-  | {method: ReqRespMethod.Status; data: phase0.Status}
-  | {method: ReqRespMethod.BeaconBlocksByRange; data: phase0.BeaconBlocksByRangeRequest}
-  | {method: ReqRespMethod.BeaconBlocksByRoot; data: phase0.BeaconBlocksByRootRequest};
+export type ReqRespRequestPayload = {
+  method: ReqRespMethod;
+  // TODO: Use different type than unknown
+  data: unknown;
+};
 
 export type ReqRespResponsePayload =
   | {method: ReqRespMethod.Status; data: phase0.Status}
@@ -38,7 +39,6 @@ export type ReqRespResponsePayload =
   | {method: ReqRespMethod.BeaconBlocksByRoot; data: EncodedPayloadBytes};
 
 export type ReqRespOutgoingResponse = {
-  from: PeerId;
   requestId: number;
   payload: IteratorEvent<EncodedPayloadBytes>;
 };
