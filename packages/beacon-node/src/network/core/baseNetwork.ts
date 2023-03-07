@@ -61,7 +61,7 @@ export type BaseNetworkInit = {
   clock: LocalClock;
   networkEventBus: NetworkEventBus;
   activeValidatorCount: number;
-  status: phase0.Status;
+  initialStatus: phase0.Status;
 };
 
 /**
@@ -133,7 +133,7 @@ export class BaseNetwork implements IBaseNetwork {
     networkEventBus,
     clock,
     activeValidatorCount,
-    status,
+    initialStatus,
   }: BaseNetworkInit): Promise<BaseNetwork> {
     const libp2p = await createNodeJsLibp2p(peerId, opts, {
       peerStoreDir,
@@ -144,7 +144,7 @@ export class BaseNetwork implements IBaseNetwork {
     const metrics = metricsRegistry ? createBaseNetworkMetrics(metricsRegistry) : null;
     const peersData = new PeersData();
     const peerRpcScores = new PeerRpcScoreStore(metrics);
-    const statusCache = new LocalStatusCache(status);
+    const statusCache = new LocalStatusCache(initialStatus);
 
     // Bind discv5's ENR to local metadata
     // resolve circular dependency by setting `discv5` variable after the peer manager is instantiated

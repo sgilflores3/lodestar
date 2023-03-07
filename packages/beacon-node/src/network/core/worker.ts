@@ -50,7 +50,7 @@ const baseNetwork = await BaseNetwork.init({
   reqRespHandlers,
   activeValidatorCount: workerData.activeValidatorCount,
   networkEventBus,
-  status,
+  initialStatus,
 });
 
 const pendingGossipsubMessageSubject = new Subject<PendingGossipsubMessage>();
