@@ -1,5 +1,5 @@
 import {PeerId} from "@libp2p/interface-peer-id";
-import {EncodedPayloadBytes, ReqRespHandler} from "@lodestar/reqresp";
+import {ReqRespHandler, EncodedPayloadBytesOutgoing} from "@lodestar/reqresp";
 import {ReqRespMethod} from "../types.js";
 import type {ReqRespHandlers} from "../handlers/index.js";
 import {NetworkEvent, NetworkEventBus} from "../../events.js";
@@ -61,13 +61,13 @@ class AsyncIterableWorker {
 
   // TODO: Track count of pending with metrics to ensure no leaks
   // TODO: Consider expiring the requests after no reply for long enough, t
-  private readonly pending = new Map<number, PendingItem<EncodedPayloadBytes>>();
+  private readonly pending = new Map<number, PendingItem<EncodedPayloadBytesOutgoing>>();
 
   constructor(private readonly events: NetworkEventBus) {
     events.on(NetworkEvent.reqRespOutgoingResponse, this.onOutgoingResponse.bind(this));
   }
 
-  getHandler(method: ReqRespMethod): (req: unknown, peerId: PeerId) => AsyncIterable<EncodedPayloadBytes> {
+  getHandler(method: ReqRespMethod): (req: unknown, peerId: PeerId) => AsyncIterable<EncodedPayloadBytesOutgoing> {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
@@ -75,7 +75,7 @@ class AsyncIterableWorker {
       return {
         [Symbol.asyncIterator]() {
           const requestId = self.nextRequestId++;
-          const req: PendingItem<EncodedPayloadBytes> = {
+          const req: PendingItem<EncodedPayloadBytesOutgoing> = {
             items: [],
             done: false,
             error: null,
@@ -103,7 +103,7 @@ class AsyncIterableWorker {
 
                 if (req.done) {
                   // Is it correct to return undefined on done: true?
-                  return {value: (undefined as unknown) as EncodedPayloadBytes, done: true};
+                  return {value: (undefined as unknown) as EncodedPayloadBytesOutgoing, done: true};
                 }
 
                 await new Promise<void>((resolve) => {
@@ -163,7 +163,10 @@ export class ReqRespByEventsMain {
 
   private async onIncomingRequest(data: ReqRespIncomingRequest): Promise<void> {
     try {
-      const handler: ReqRespHandler<unknown, EncodedPayloadBytes> | undefined = this.handlers[data.payload.method];
+      // TODO TEMP: figure out types here more safely
+      const handler: ReqRespHandler<unknown, EncodedPayloadBytesOutgoing> | undefined = this.handlers[
+        data.payload.method
+      ];
       if (handler === undefined) {
         throw Error(`Unknown reqresp method ${data.payload.method}`);
       }
@@ -171,8 +174,8 @@ export class ReqRespByEventsMain {
       for await (const item of handler(data.payload.data, data.from)) {
         this.events.emit(NetworkEvent.reqRespOutgoingResponse, {
           requestId: data.requestId,
-          // TODO: Ensure EncodedPayloadBytes
-          payload: {type: IteratorEventType.nextItem, item: item as EncodedPayloadBytes},
+          // TODO: Ensure EncodedPayloadBytesOutgoing
+          payload: {type: IteratorEventType.nextItem, item: item as EncodedPayloadBytesOutgoing},
         });
       }
 

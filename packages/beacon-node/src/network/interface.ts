@@ -8,9 +8,10 @@ import {phase0} from "@lodestar/types";
 import {BlockInput} from "../chain/blocks/types.js";
 import {INetworkEventBus} from "./events.js";
 import {PeerAction} from "./peers/index.js";
-import {NetworkCore} from "./core/types.js";
+import {IBaseNetwork} from "./core/types.js";
 import {GossipBeaconNode, GossipType} from "./gossip/interface.js";
 import {PendingGossipsubMessage} from "./processor/types.js";
+import {IReqRespBeaconNodeBeacon} from "./reqresp/interface.js";
 
 /**
  * The architecture of the network looks like so:
@@ -23,13 +24,14 @@ import {PendingGossipsubMessage} from "./processor/types.js";
 
 export interface INetwork
   extends Omit<
-      NetworkCore,
+      IBaseNetwork,
       | "updateStatus"
       | "publishGossip"
       | "getConnectedPeers"
       | "getConnectedPeerCount"
       | "isSubscribedToGossipCoreTopics"
     >,
+    IReqRespBeaconNodeBeacon,
     GossipBeaconNode {
   /** Our network identity */
   peerId: PeerId;

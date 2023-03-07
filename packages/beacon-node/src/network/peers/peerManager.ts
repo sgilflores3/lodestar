@@ -9,7 +9,7 @@ import {Logger} from "@lodestar/utils";
 import {GoodByeReasonCode, GOODBYE_KNOWN_CODES, Libp2pEvent} from "../../constants/index.js";
 import {NetworkEvent, INetworkEventBus} from "../events.js";
 import {Libp2p} from "../interface.js";
-import {IReqRespBeaconNode, ReqRespMethod, RequestTypedContainer} from "../reqresp/ReqRespBeaconNode.js";
+import {IReqRespBeaconNodePeerManager, ReqRespMethod, RequestTypedContainer} from "../reqresp/ReqRespBeaconNode.js";
 import {getConnection, getConnectionsMap, prettyPrintPeerId} from "../util.js";
 import {SubnetsService} from "../subnets/index.js";
 import {BeaconClock} from "../../chain/index.js";
@@ -85,7 +85,7 @@ export type PeerManagerModules = {
   libp2p: Libp2p;
   logger: Logger;
   metrics: BaseNetworkMetrics | null;
-  reqResp: IReqRespBeaconNode;
+  reqResp: IReqRespBeaconNodePeerManager;
   gossip: Eth2Gossipsub;
   attnetsService: SubnetsService;
   syncnetsService: SubnetsService;
@@ -117,7 +117,7 @@ export class PeerManager {
   private readonly libp2p: Libp2p;
   private readonly logger: Logger;
   private readonly metrics: BaseNetworkMetrics | null;
-  private readonly reqResp: IReqRespBeaconNode;
+  private readonly reqResp: IReqRespBeaconNodePeerManager;
   private readonly gossipsub: Eth2Gossipsub;
   private readonly attnetsService: SubnetsService;
   private readonly syncnetsService: SubnetsService;

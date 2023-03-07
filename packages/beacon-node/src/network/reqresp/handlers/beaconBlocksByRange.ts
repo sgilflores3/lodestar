@@ -1,5 +1,11 @@
 import {GENESIS_SLOT, MAX_REQUEST_BLOCKS} from "@lodestar/params";
-import {ContextBytesType, EncodedPayloadBytes, EncodedPayloadType, ResponseError, RespStatus} from "@lodestar/reqresp";
+import {
+  ContextBytesType,
+  EncodedPayloadBytesOutgoing,
+  EncodedPayloadType,
+  ResponseError,
+  RespStatus,
+} from "@lodestar/reqresp";
 import {deneb, phase0} from "@lodestar/types";
 import {fromHex} from "@lodestar/utils";
 import {IBeaconChain} from "../../../chain/index.js";
@@ -11,7 +17,7 @@ export function onBeaconBlocksByRange(
   request: phase0.BeaconBlocksByRangeRequest,
   chain: IBeaconChain,
   db: IBeaconDb
-): AsyncIterable<EncodedPayloadBytes> {
+): AsyncIterable<EncodedPayloadBytesOutgoing> {
   return onBlocksOrBlobsSidecarsByRange(request, chain, {
     finalized: db.blockArchive,
     unfinalized: db.block,
@@ -25,7 +31,7 @@ export async function* onBlocksOrBlobsSidecarsByRange(
     finalized: Pick<IBeaconDb["blockArchive"], "binaryEntriesStream" | "decodeKey">;
     unfinalized: Pick<IBeaconDb["block"], "getBinary">;
   }
-): AsyncIterable<EncodedPayloadBytes> {
+): AsyncIterable<EncodedPayloadBytesOutgoing> {
   const {startSlot, count} = validateBeaconBlocksByRangeRequest(request);
   const endSlot = startSlot + count;
 

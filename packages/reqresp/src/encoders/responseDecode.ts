@@ -8,7 +8,7 @@ import {
   CONTEXT_BYTES_FORK_DIGEST_LENGTH,
   ContextBytesFactory,
   ProtocolDefinition,
-  EncodedPayloadBytes,
+  EncodedPayloadBytesIncoming,
   EncodedPayloadType,
   ContextBytes,
   contextBytesEmpty,
@@ -36,7 +36,7 @@ export function responseDecode<Resp>(
     onFirstHeader: () => void;
     onFirstResponseChunk: () => void;
   }
-): (source: AsyncIterable<Uint8Array | Uint8ArrayList>) => AsyncIterable<EncodedPayloadBytes> {
+): (source: AsyncIterable<Uint8Array | Uint8ArrayList>) => AsyncIterable<EncodedPayloadBytesIncoming> {
   return async function* responseDecodeSink(source) {
     const bufferedSource = new BufferedSource(source as AsyncGenerator<Uint8ArrayList>);
 
@@ -73,6 +73,7 @@ export function responseDecode<Resp>(
         type: EncodedPayloadType.bytes,
         bytes: payloadBytes,
         contextBytes,
+        protocolVersion: protocol.version,
       };
 
       if (!readFirstResponseChunk) {

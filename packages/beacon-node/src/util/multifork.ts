@@ -38,11 +38,11 @@ export function getSignedBlockTypeFromBytes(
   config: ChainForkConfig,
   bytes: Buffer | Uint8Array
 ): allForks.AllForksSSZTypes["SignedBeaconBlock"] {
-  const slot = getSlotFromBytes(bytes);
+  const slot = getSlotFromSignedBeaconBlock(bytes);
   return config.getForkTypes(slot).SignedBeaconBlock;
 }
 
-export function getSlotFromBytes(bytes: Buffer | Uint8Array): Slot {
+export function getSlotFromSignedBeaconBlock(bytes: Buffer | Uint8Array): Slot {
   return bytesToInt(bytes.subarray(SLOT_BYTES_POSITION_IN_BLOCK, SLOT_BYTES_POSITION_IN_BLOCK + SLOT_BYTE_COUNT));
 }
 

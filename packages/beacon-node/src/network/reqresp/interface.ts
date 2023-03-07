@@ -1,11 +1,22 @@
 import {PeerId} from "@libp2p/interface-peer-id";
+import {EncodedPayloadBytesIncoming} from "@lodestar/reqresp";
 import {allForks, altair, deneb, phase0} from "@lodestar/types";
 
-export interface IReqRespBeaconNode {
+/**
+ * ReqResp methods used only be PeerManager, so the main thread never has to call them
+ */
+export interface IReqRespBeaconNodePeerManager {
   status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status>;
   goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void>;
   ping(peerId: PeerId): Promise<phase0.Ping>;
   metadata(peerId: PeerId): Promise<allForks.Metadata>;
+}
+
+/**
+ * ReqResp methods used by main thread, so responses cross the worker boundary.
+ * Response types are the consumable deserialized SSZ types
+ */
+export interface IReqRespBeaconNodeBeacon {
   beaconBlocksByRange(
     peerId: PeerId,
     request: phase0.BeaconBlocksByRangeRequest
@@ -24,6 +35,34 @@ export interface IReqRespBeaconNode {
     request: altair.LightClientUpdatesByRange
   ): Promise<allForks.LightClientUpdate[]>;
 }
+
+/**
+ * Same as {@see IReqRespBeaconNodeBeacon} but responses are encoded to cross the worker boundary
+ */
+export interface IReqRespBeaconNodeBeaconBytes {
+  beaconBlocksByRange(
+    peerId: PeerId,
+    request: phase0.BeaconBlocksByRangeRequest
+  ): Promise<EncodedPayloadBytesIncoming[]>;
+  beaconBlocksByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<EncodedPayloadBytesIncoming[]>;
+  blobsSidecarsByRange(
+    peerId: PeerId,
+    request: deneb.BlobsSidecarsByRangeRequest
+  ): Promise<EncodedPayloadBytesIncoming[]>;
+  beaconBlockAndBlobsSidecarByRoot(
+    peerId: PeerId,
+    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
+  ): Promise<EncodedPayloadBytesIncoming[]>;
+  lightClientBootstrap(peerId: PeerId, request: Uint8Array): Promise<EncodedPayloadBytesIncoming>;
+  lightClientOptimisticUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming>;
+  lightClientFinalityUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming>;
+  lightClientUpdatesByRange(
+    peerId: PeerId,
+    request: altair.LightClientUpdatesByRange
+  ): Promise<EncodedPayloadBytesIncoming[]>;
+}
+
+export interface IReqRespBeaconNode extends IReqRespBeaconNodePeerManager, IReqRespBeaconNodeBeacon {}
 
 /**
  * Rate limiter interface for inbound and outbound requests.

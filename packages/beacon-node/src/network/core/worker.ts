@@ -84,10 +84,6 @@ const libp2pWorkerApi: NetworkWorkerApi = {
 
   // ReqResp outgoing requests
 
-  status: (peerId, request) => baseNetwork.reqResp.status(peerId, request),
-  goodbye: (peerId, request) => baseNetwork.reqResp.goodbye(peerId, request),
-  ping: (peerId) => baseNetwork.reqResp.ping(peerId),
-  metadata: (peerId) => baseNetwork.reqResp.metadata(peerId),
   beaconBlockAndBlobsSidecarByRoot: (peerId, request) =>
     baseNetwork.reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
   beaconBlocksByRange: (peerId, request) => baseNetwork.reqResp.beaconBlocksByRange(peerId, request),

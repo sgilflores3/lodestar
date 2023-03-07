@@ -8,7 +8,7 @@ import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {phase0} from "@lodestar/types";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {NetworkOptions} from "../options.js";
-import {IReqRespBeaconNode} from "../reqresp/interface.js";
+import {IReqRespBeaconNodeBeaconBytes} from "../reqresp/interface.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
 import {PeerScoreStats} from "../peers/index.js";
 
@@ -52,7 +52,7 @@ export interface IBaseNetwork {
  *
  * All properties/methods should be async to allow for a worker implementation
  */
-export interface NetworkCore extends IBaseNetwork, IReqRespBeaconNode {}
+export interface NetworkCore extends IBaseNetwork, IReqRespBeaconNodeBeaconBytes {}
 
 /**
  * libp2p worker contructor (start-up) data
@@ -74,7 +74,7 @@ export type NetworkWorkerData = {
  * API exposed by the libp2p worker
  */
 export type NetworkWorkerApi = IBaseNetwork &
-  IReqRespBeaconNode & {
+  IReqRespBeaconNodeBeaconBytes & {
     // TODO: Gossip events
     // Main -> Worker: NetworkEvent.gossipMessageValidationResult
     // Worker -> Main: NetworkEvent.pendingGossipsubMessage

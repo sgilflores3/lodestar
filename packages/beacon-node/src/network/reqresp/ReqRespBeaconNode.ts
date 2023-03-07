@@ -1,11 +1,14 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Libp2p} from "libp2p";
 import {BeaconConfig} from "@lodestar/config";
-import {ForkName, ForkSeq} from "@lodestar/params";
+import {ForkName, ForkSeq, isForkLightClient} from "@lodestar/params";
 import {
   collectExactOne,
   collectMaxResponse,
+  ContextBytes,
+  ContextBytesType,
   EncodedPayload,
+  EncodedPayloadBytesIncoming,
   EncodedPayloadType,
   Encoding,
   ProtocolDefinition,
@@ -14,8 +17,9 @@ import {
 } from "@lodestar/reqresp";
 import {ReqRespOpts} from "@lodestar/reqresp/lib/ReqResp.js";
 import * as reqRespProtocols from "@lodestar/reqresp/protocols";
-import {allForks, altair, deneb, phase0, Root} from "@lodestar/types";
+import {allForks, altair, deneb, phase0, Root, ssz} from "@lodestar/types";
 import {Logger} from "@lodestar/utils";
+import {Type} from "@chainsafe/ssz";
 import {INetworkEventBus, NetworkEvent} from "../events.js";
 import {MetadataController} from "../metadata.js";
 import {PeersData} from "../peers/peersData.js";
@@ -27,6 +31,7 @@ import {onOutgoingReqRespError} from "./score.js";
 import {ReqRespMethod, RequestTypedContainer, Version} from "./types.js";
 import {collectSequentialBlocksInRange} from "./utils/collectSequentialBlocksInRange.js";
 
+export type {IReqRespBeaconNodeBeacon, IReqRespBeaconNodePeerManager} from "./interface.js";
 export {getReqRespHandlers, ReqRespHandlers} from "./handlers/index.js";
 export {ReqRespMethod, RequestTypedContainer} from "./types.js";
 export {IReqRespBeaconNode};
@@ -57,7 +62,7 @@ export type ReqRespBeaconNodeOpts = ReqRespOpts;
  * https://github.com/ethereum/consensus-specs/blob/v1.1.10/specs/phase0/p2p-interface.md#the-reqresp-domain
  * https://github.com/ethereum/consensus-specs/blob/dev/specs/altair/light-client/p2p-interface.md#the-reqresp-domain
  */
-export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
+export class ReqRespBeaconNode extends ReqResp {
   private readonly reqRespHandlers: ReqRespHandlers;
   private readonly metadataController: MetadataController;
   private readonly peerRpcScores: IPeerRpcScoreStore;
@@ -136,33 +141,24 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     }
   }
 
-  async status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status> {
-    return collectExactOne(
-      this.sendRequest<phase0.Status, phase0.Status>(peerId, ReqRespMethod.Status, [Version.V1], request)
-    );
+  async status(peerId: PeerId, request: phase0.Status): Promise<EncodedPayloadBytesIncoming> {
+    return collectExactOne(this.sendRequest<phase0.Status>(peerId, ReqRespMethod.Status, [Version.V1], request));
   }
 
   async goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void> {
     // TODO: Replace with "ignore response after request"
-    await collectExactOne(
-      this.sendRequest<phase0.Goodbye, phase0.Goodbye>(peerId, ReqRespMethod.Goodbye, [Version.V1], request)
+    await collectExactOne(this.sendRequest<phase0.Goodbye>(peerId, ReqRespMethod.Goodbye, [Version.V1], request));
+  }
+
+  async ping(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
+    return collectExactOne(
+      this.sendRequest<phase0.Ping>(peerId, ReqRespMethod.Ping, [Version.V1], this.metadataController.seqNumber)
     );
   }
 
-  async ping(peerId: PeerId): Promise<phase0.Ping> {
+  async metadata(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
     return collectExactOne(
-      this.sendRequest<phase0.Ping, phase0.Ping>(
-        peerId,
-        ReqRespMethod.Ping,
-        [Version.V1],
-        this.metadataController.seqNumber
-      )
-    );
-  }
-
-  async metadata(peerId: PeerId): Promise<allForks.Metadata> {
-    return collectExactOne(
-      this.sendRequest<null, allForks.Metadata>(
+      this.sendRequest<null>(
         peerId,
         ReqRespMethod.Metadata,
         // Before altair, prioritize V2. After altair only request V2
@@ -175,9 +171,9 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
   async beaconBlocksByRange(
     peerId: PeerId,
     request: phase0.BeaconBlocksByRangeRequest
-  ): Promise<allForks.SignedBeaconBlock[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return collectSequentialBlocksInRange(
-      this.sendRequest<phase0.BeaconBlocksByRangeRequest, allForks.SignedBeaconBlock>(
+      this.sendRequest<phase0.BeaconBlocksByRangeRequest>(
         peerId,
         ReqRespMethod.BeaconBlocksByRange,
         // Before altair, prioritize V2. After altair only request V2
@@ -191,9 +187,9 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
   async beaconBlocksByRoot(
     peerId: PeerId,
     request: phase0.BeaconBlocksByRootRequest
-  ): Promise<allForks.SignedBeaconBlock[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return collectMaxResponse(
-      this.sendRequest<phase0.BeaconBlocksByRootRequest, allForks.SignedBeaconBlock>(
+      this.sendRequest<phase0.BeaconBlocksByRootRequest>(
         peerId,
         ReqRespMethod.BeaconBlocksByRoot,
         // Before altair, prioritize V2. After altair only request V2
@@ -204,45 +200,26 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     );
   }
 
-  async lightClientBootstrap(peerId: PeerId, request: Root): Promise<allForks.LightClientBootstrap> {
+  async lightClientBootstrap(peerId: PeerId, request: Root): Promise<EncodedPayloadBytesIncoming> {
+    return collectExactOne(this.sendRequest<Root>(peerId, ReqRespMethod.LightClientBootstrap, [Version.V1], request));
+  }
+
+  async lightClientOptimisticUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
     return collectExactOne(
-      this.sendRequest<Root, allForks.LightClientBootstrap>(
-        peerId,
-        ReqRespMethod.LightClientBootstrap,
-        [Version.V1],
-        request
-      )
+      this.sendRequest<null>(peerId, ReqRespMethod.LightClientOptimisticUpdate, [Version.V1], null)
     );
   }
 
-  async lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
-    return collectExactOne(
-      this.sendRequest<null, allForks.LightClientOptimisticUpdate>(
-        peerId,
-        ReqRespMethod.LightClientOptimisticUpdate,
-        [Version.V1],
-        null
-      )
-    );
-  }
-
-  async lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
-    return collectExactOne(
-      this.sendRequest<null, allForks.LightClientFinalityUpdate>(
-        peerId,
-        ReqRespMethod.LightClientFinalityUpdate,
-        [Version.V1],
-        null
-      )
-    );
+  async lightClientFinalityUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
+    return collectExactOne(this.sendRequest<null>(peerId, ReqRespMethod.LightClientFinalityUpdate, [Version.V1], null));
   }
 
   async lightClientUpdatesByRange(
     peerId: PeerId,
     request: altair.LightClientUpdatesByRange
-  ): Promise<allForks.LightClientUpdate[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return collectMaxResponse(
-      this.sendRequest<altair.LightClientUpdatesByRange, allForks.LightClientUpdate>(
+      this.sendRequest<altair.LightClientUpdatesByRange>(
         peerId,
         ReqRespMethod.LightClientUpdatesByRange,
         [Version.V1],
@@ -255,9 +232,9 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
   async blobsSidecarsByRange(
     peerId: PeerId,
     request: deneb.BlobsSidecarsByRangeRequest
-  ): Promise<deneb.BlobsSidecar[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return collectMaxResponse(
-      this.sendRequest<deneb.BlobsSidecarsByRangeRequest, deneb.BlobsSidecar>(
+      this.sendRequest<deneb.BlobsSidecarsByRangeRequest>(
         peerId,
         ReqRespMethod.BlobsSidecarsByRange,
         [Version.V1],
@@ -270,9 +247,9 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
   async beaconBlockAndBlobsSidecarByRoot(
     peerId: PeerId,
     request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
-  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return collectMaxResponse(
-      this.sendRequest<deneb.BeaconBlockAndBlobsSidecarByRootRequest, deneb.SignedBeaconBlockAndBlobsSidecar>(
+      this.sendRequest<deneb.BeaconBlockAndBlobsSidecarByRootRequest>(
         peerId,
         ReqRespMethod.BeaconBlockAndBlobsSidecarByRoot,
         [Version.V1],
@@ -341,9 +318,18 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     return protocols;
   }
 
-  protected sendRequest<Req, Resp>(peerId: PeerId, method: string, versions: number[], body: Req): AsyncIterable<Resp> {
+  protected sendRequest<Req>(
+    peerId: PeerId,
+    method: string,
+    versions: number[],
+    body: Req
+  ): AsyncIterable<EncodedPayloadBytesIncoming> {
     // Remember prefered encoding
     const encoding = this.peersData.getEncodingPreference(peerId.toString()) ?? Encoding.SSZ_SNAPPY;
+
+    // TODO: Use `fromEncodedPayloadBytes()` to convert
+    // - When ReqResp in main thread, don't use events and just convert here maybe
+    // - When ReqResp in worker, use events and move EncodedPayloadBytes around only
 
     return super.sendRequest(peerId, method, versions, encoding, body);
   }
@@ -411,5 +397,126 @@ export class ReqRespBeaconNode extends ReqResp implements IReqRespBeaconNode {
     peerId: PeerId
   ): AsyncIterable<EncodedPayload<allForks.SignedBeaconBlock>> {
     yield* this.reqRespHandlers[ReqRespMethod.BeaconBlocksByRoot](req, peerId);
+  }
+}
+
+// TEMP
+// Beacon fns are already implemented now in main Network class
+// Peer manager methods should be implemented somewhere else
+export class ReqRespBeaconNodeFrontEnd implements IReqRespBeaconNode {
+  constructor(private readonly reqResp: ReqRespBeaconNode) {}
+
+  async status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status> {
+    const item = await this.reqResp.status(peerId, request);
+    return this.decodeResponse(item, () => ssz.phase0.Status);
+  }
+
+  async goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void> {
+    await this.reqResp.goodbye(peerId, request);
+  }
+
+  async ping(peerId: PeerId): Promise<phase0.Ping> {
+    const item = await this.reqResp.ping(peerId);
+    return this.decodeResponse(item, () => ssz.phase0.Ping);
+  }
+
+  async metadata(peerId: PeerId): Promise<allForks.Metadata> {
+    const item = await this.reqResp.metadata(peerId);
+    return this.decodeResponse(item, (_fork, protocolVersion) => {
+      if (protocolVersion === 1) return ssz.phase0.Metadata;
+      if (protocolVersion === 2) return ssz.altair.Metadata;
+      else throw Error(`Unknown reqresp metadata protocol version: ${protocolVersion}`);
+    });
+  }
+
+  async beaconBlocksByRange(
+    peerId: PeerId,
+    request: phase0.BeaconBlocksByRangeRequest
+  ): Promise<allForks.SignedBeaconBlock[]> {
+    const items = await this.reqResp.beaconBlocksByRange(peerId, request);
+    return items.map((item) => this.decodeResponse(item, (forkName) => ssz[forkName].SignedBeaconBlock));
+  }
+
+  async beaconBlocksByRoot(
+    peerId: PeerId,
+    request: phase0.BeaconBlocksByRootRequest
+  ): Promise<allForks.SignedBeaconBlock[]> {
+    const items = await this.reqResp.beaconBlocksByRoot(peerId, request);
+    return items.map((item) => this.decodeResponse(item, (forkName) => ssz[forkName].SignedBeaconBlock));
+  }
+
+  async lightClientBootstrap(peerId: PeerId, request: Root): Promise<allForks.LightClientBootstrap> {
+    const item = await this.reqResp.lightClientBootstrap(peerId, request);
+    return this.decodeResponse(item, (forkName) =>
+      isForkLightClient(forkName)
+        ? ssz.allForksLightClient[forkName].LightClientBootstrap
+        : ssz.altair.LightClientBootstrap
+    );
+  }
+
+  async lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
+    const item = await this.reqResp.lightClientOptimisticUpdate(peerId);
+    return this.decodeResponse(item, (forkName) =>
+      isForkLightClient(forkName)
+        ? ssz.allForksLightClient[forkName].LightClientOptimisticUpdate
+        : ssz.altair.LightClientOptimisticUpdate
+    );
+  }
+
+  async lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
+    const item = await this.reqResp.lightClientFinalityUpdate(peerId);
+    return this.decodeResponse(item, (forkName) =>
+      isForkLightClient(forkName)
+        ? ssz.allForksLightClient[forkName].LightClientFinalityUpdate
+        : ssz.altair.LightClientFinalityUpdate
+    );
+  }
+
+  async lightClientUpdatesByRange(
+    peerId: PeerId,
+    request: altair.LightClientUpdatesByRange
+  ): Promise<allForks.LightClientUpdate[]> {
+    const items = await this.reqResp.lightClientUpdatesByRange(peerId, request);
+    return items.map((item) =>
+      this.decodeResponse(item, (forkName) =>
+        isForkLightClient(forkName) ? ssz.allForksLightClient[forkName].LightClientUpdate : ssz.altair.LightClientUpdate
+      )
+    );
+  }
+
+  async blobsSidecarsByRange(
+    peerId: PeerId,
+    request: deneb.BlobsSidecarsByRangeRequest
+  ): Promise<deneb.BlobsSidecar[]> {
+    const items = await this.reqResp.blobsSidecarsByRange(peerId, request);
+    return items.map((item) => this.decodeResponse(item, () => ssz.deneb.BlobsSidecar));
+  }
+
+  async beaconBlockAndBlobsSidecarByRoot(
+    peerId: PeerId,
+    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
+  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
+    const items = await this.reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request);
+    return items.map((item) => this.decodeResponse(item, () => ssz.deneb.SignedBeaconBlockAndBlobsSidecar));
+  }
+
+  private decodeResponse<T>(
+    respData: EncodedPayloadBytesIncoming,
+    getType: (fork: ForkName, protocolVersion: number) => Type<T>
+  ): T {
+    // TODO: Handle error and propagate to downscore peer
+    const fork = forkNameFromContextBytes(respData.contextBytes);
+    const type = getType(fork, respData.protocolVersion);
+    return type.deserialize(respData.bytes);
+  }
+}
+
+function forkNameFromContextBytes(contextBytes: ContextBytes): ForkName {
+  switch (contextBytes.type) {
+    case ContextBytesType.Empty:
+      return ForkName.phase0;
+
+    case ContextBytesType.ForkDigest:
+      return contextBytes.fork;
   }
 }

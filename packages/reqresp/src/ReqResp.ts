@@ -6,7 +6,7 @@ import {Logger} from "@lodestar/utils";
 import {getMetrics, Metrics, MetricsRegister} from "./metrics.js";
 import {RequestError, RequestErrorCode, sendRequest, SendRequestOpts} from "./request/index.js";
 import {handleRequest} from "./response/index.js";
-import {EncodedPayloadBytes, Encoding, ProtocolDefinition, ReqRespRateLimiterOpts} from "./types.js";
+import {EncodedPayloadBytesIncoming, Encoding, ProtocolDefinition, ReqRespRateLimiterOpts} from "./types.js";
 import {formatProtocolID} from "./utils/protocolId.js";
 import {ReqRespRateLimiter} from "./rate_limiter/ReqRespRateLimiter.js";
 
@@ -130,7 +130,7 @@ export class ReqResp {
     versions: number[],
     encoding: Encoding,
     body: Req
-  ): AsyncIterable<EncodedPayloadBytes> {
+  ): AsyncIterable<EncodedPayloadBytesIncoming> {
     const peerClient = this.opts.getPeerLogMetadata?.(peerId.toString());
     this.metrics?.outgoingRequests.inc({method});
     const timer = this.metrics?.outgoingRequestRoundtripTime.startTimer({method});

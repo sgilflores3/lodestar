@@ -14,13 +14,20 @@ export type EncodedPayloadSsz<T> = {
   data: T;
 };
 
-export type EncodedPayloadBytes = {
+export type EncodedPayloadBytesOutgoing = {
   type: EncodedPayloadType.bytes;
   bytes: Uint8Array;
   contextBytes: ContextBytes;
 };
 
-export type EncodedPayload<T> = EncodedPayloadSsz<T> | EncodedPayloadBytes;
+export type EncodedPayloadBytesIncoming = {
+  type: EncodedPayloadType.bytes;
+  bytes: Uint8Array;
+  contextBytes: ContextBytes;
+  protocolVersion: number;
+};
+
+export type EncodedPayload<T> = EncodedPayloadSsz<T> | EncodedPayloadBytesOutgoing;
 
 export type ReqRespHandler<Req, Resp> = (req: Req, peerId: PeerId) => AsyncIterable<EncodedPayload<Resp>>;
 

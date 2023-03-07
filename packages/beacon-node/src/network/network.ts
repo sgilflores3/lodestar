@@ -1,11 +1,14 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {PublishResult} from "@libp2p/interface-pubsub";
+import {Type} from "@chainsafe/ssz";
+import {EncodedPayloadBytesIncoming} from "@lodestar/reqresp";
+import {ForkName, isForkLightClient} from "@lodestar/params";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger, sleep} from "@lodestar/utils";
 import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {computeTimeAtSlot} from "@lodestar/state-transition";
-import {deneb, phase0, allForks, altair, capella} from "@lodestar/types";
+import {deneb, phase0, allForks, altair, capella, ssz, Root} from "@lodestar/types";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {Metrics, RegistryMetricCreator} from "../metrics/index.js";
@@ -32,6 +35,7 @@ import {
   toGossipTopic,
 } from "./gossip/topic.js";
 import {MainThreadNetworkCore, NetworkCore} from "./core/index.js";
+import {forkNameFromContextBytes} from "./reqresp/utils/contextBytes.js";
 
 type NetworkModules = {
   opts: NetworkOptions;
@@ -368,50 +372,85 @@ export class Network implements INetwork {
 
   // ReqResp outgoing
 
-  status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status> {
-    return this.core.status(peerId, request);
-  }
-  goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void> {
-    return this.core.goodbye(peerId, request);
-  }
-  ping(peerId: PeerId): Promise<phase0.Ping> {
-    return this.core.ping(peerId);
-  }
-  metadata(peerId: PeerId): Promise<allForks.Metadata> {
-    return this.core.metadata(peerId);
-  }
-  beaconBlocksByRange(
+  async beaconBlocksByRange(
     peerId: PeerId,
     request: phase0.BeaconBlocksByRangeRequest
   ): Promise<allForks.SignedBeaconBlock[]> {
-    return this.core.beaconBlocksByRange(peerId, request);
+    const items = await this.core.beaconBlocksByRange(peerId, request);
+    return items.map((item) => this.decodeReqRespResponse(item, (forkName) => ssz[forkName].SignedBeaconBlock));
   }
-  beaconBlocksByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<allForks.SignedBeaconBlock[]> {
-    return this.core.beaconBlocksByRoot(peerId, request);
-  }
-  blobsSidecarsByRange(peerId: PeerId, request: deneb.BlobsSidecarsByRangeRequest): Promise<deneb.BlobsSidecar[]> {
-    return this.core.blobsSidecarsByRange(peerId, request);
-  }
-  beaconBlockAndBlobsSidecarByRoot(
+
+  async beaconBlocksByRoot(
     peerId: PeerId,
-    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
-  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
-    return this.core.beaconBlockAndBlobsSidecarByRoot(peerId, request);
+    request: phase0.BeaconBlocksByRootRequest
+  ): Promise<allForks.SignedBeaconBlock[]> {
+    const items = await this.core.beaconBlocksByRoot(peerId, request);
+    return items.map((item) => this.decodeReqRespResponse(item, (forkName) => ssz[forkName].SignedBeaconBlock));
   }
-  lightClientBootstrap(peerId: PeerId, request: Uint8Array): Promise<allForks.LightClientBootstrap> {
-    return this.core.lightClientBootstrap(peerId, request);
+
+  async lightClientBootstrap(peerId: PeerId, request: Root): Promise<allForks.LightClientBootstrap> {
+    const item = await this.core.lightClientBootstrap(peerId, request);
+    return this.decodeReqRespResponse(item, (forkName) =>
+      isForkLightClient(forkName)
+        ? ssz.allForksLightClient[forkName].LightClientBootstrap
+        : ssz.altair.LightClientBootstrap
+    );
   }
-  lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
-    return this.core.lightClientOptimisticUpdate(peerId);
+
+  async lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
+    const item = await this.core.lightClientOptimisticUpdate(peerId);
+    return this.decodeReqRespResponse(item, (forkName) =>
+      isForkLightClient(forkName)
+        ? ssz.allForksLightClient[forkName].LightClientOptimisticUpdate
+        : ssz.altair.LightClientOptimisticUpdate
+    );
   }
-  lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
-    return this.core.lightClientFinalityUpdate(peerId);
+
+  async lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
+    const item = await this.core.lightClientFinalityUpdate(peerId);
+    return this.decodeReqRespResponse(item, (forkName) =>
+      isForkLightClient(forkName)
+        ? ssz.allForksLightClient[forkName].LightClientFinalityUpdate
+        : ssz.altair.LightClientFinalityUpdate
+    );
   }
-  lightClientUpdatesByRange(
+
+  async lightClientUpdatesByRange(
     peerId: PeerId,
     request: altair.LightClientUpdatesByRange
   ): Promise<allForks.LightClientUpdate[]> {
-    return this.core.lightClientUpdatesByRange(peerId, request);
+    const items = await this.core.lightClientUpdatesByRange(peerId, request);
+    return items.map((item) =>
+      this.decodeReqRespResponse(item, (forkName) =>
+        isForkLightClient(forkName) ? ssz.allForksLightClient[forkName].LightClientUpdate : ssz.altair.LightClientUpdate
+      )
+    );
+  }
+
+  async blobsSidecarsByRange(
+    peerId: PeerId,
+    request: deneb.BlobsSidecarsByRangeRequest
+  ): Promise<deneb.BlobsSidecar[]> {
+    const items = await this.core.blobsSidecarsByRange(peerId, request);
+    return items.map((item) => this.decodeReqRespResponse(item, () => ssz.deneb.BlobsSidecar));
+  }
+
+  async beaconBlockAndBlobsSidecarByRoot(
+    peerId: PeerId,
+    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
+  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
+    const items = await this.core.beaconBlockAndBlobsSidecarByRoot(peerId, request);
+    return items.map((item) => this.decodeReqRespResponse(item, () => ssz.deneb.SignedBeaconBlockAndBlobsSidecar));
+  }
+
+  private decodeReqRespResponse<T>(
+    respData: EncodedPayloadBytesIncoming,
+    getType: (fork: ForkName, protocolVersion: number) => Type<T>
+  ): T {
+    // TODO: Handle error and propagate to downscore peer
+    const fork = forkNameFromContextBytes(respData.contextBytes);
+    const type = getType(fork, respData.protocolVersion);
+    return type.deserialize(respData.bytes);
   }
 
   // Debug

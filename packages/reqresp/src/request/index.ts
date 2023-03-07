@@ -3,7 +3,7 @@ import {PeerId} from "@libp2p/interface-peer-id";
 import {Libp2p} from "libp2p";
 import {Uint8ArrayList} from "uint8arraylist";
 import {ErrorAborted, Logger, withTimeout, TimeoutError} from "@lodestar/utils";
-import {EncodedPayloadBytes, ProtocolDefinition} from "../types.js";
+import {EncodedPayloadBytesIncoming, ProtocolDefinition} from "../types.js";
 import {prettyPrintPeerId, abortableSource} from "../utils/index.js";
 import {ResponseError} from "../response/index.js";
 import {requestEncode} from "../encoders/requestEncode.js";
@@ -61,7 +61,7 @@ export async function* sendRequest<Req>(
   signal?: AbortSignal,
   opts?: SendRequestOpts,
   requestId = 0
-): AsyncIterable<EncodedPayloadBytes> {
+): AsyncIterable<EncodedPayloadBytesIncoming> {
   if (protocols.length === 0) {
     throw Error("sendRequest must set > 0 protocols");
   }

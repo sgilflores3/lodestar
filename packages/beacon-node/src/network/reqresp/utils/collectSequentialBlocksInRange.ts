@@ -1,18 +1,21 @@
-import {allForks, phase0} from "@lodestar/types";
+import {EncodedPayloadBytesIncoming} from "@lodestar/reqresp";
+import {phase0, Slot} from "@lodestar/types";
 import {LodestarError} from "@lodestar/utils";
+import {getSlotFromSignedBeaconBlock} from "../../../util/multifork.js";
 
 /**
  * Asserts a response from BeaconBlocksByRange respects the request and is sequential
  * Note: MUST allow missing block for skipped slots.
  */
 export async function collectSequentialBlocksInRange(
-  blockStream: AsyncIterable<allForks.SignedBeaconBlock>,
+  blockStream: AsyncIterable<EncodedPayloadBytesIncoming>,
   {count, startSlot}: Pick<phase0.BeaconBlocksByRangeRequest, "count" | "startSlot">
-): Promise<allForks.SignedBeaconBlock[]> {
-  const blocks: allForks.SignedBeaconBlock[] = [];
+): Promise<EncodedPayloadBytesIncoming[]> {
+  const blocks: EncodedPayloadBytesIncoming[] = [];
+  const blockSlots: Slot[] = [];
 
   for await (const block of blockStream) {
-    const blockSlot = block.message.slot;
+    const blockSlot = getSlotFromSignedBeaconBlock(block.bytes);
 
     // Note: step is deprecated and assumed to be 1
     if (blockSlot >= startSlot + count) {
@@ -23,9 +26,9 @@ export async function collectSequentialBlocksInRange(
       throw new BlocksByRangeError({code: BlocksByRangeErrorCode.UNDER_START_SLOT});
     }
 
-    const prevBlock = blocks.length === 0 ? null : blocks[blocks.length - 1];
-    if (prevBlock) {
-      if (prevBlock.message.slot >= blockSlot) {
+    const prevBlockSlot = blockSlots.length === 0 ? null : blockSlots[blockSlots.length - 1];
+    if (prevBlockSlot !== null) {
+      if (prevBlockSlot >= blockSlot) {
         throw new BlocksByRangeError({code: BlocksByRangeErrorCode.BAD_SEQUENCE});
       }
     }

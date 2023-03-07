@@ -1,7 +1,7 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Message} from "@libp2p/interface-pubsub";
-import {EncodedPayloadBytes} from "@lodestar/reqresp";
-import {phase0, Slot} from "@lodestar/types";
+import {EncodedPayloadBytesOutgoing} from "@lodestar/reqresp";
+import {Slot} from "@lodestar/types";
 import {GossipTopic} from "../gossip/index.js";
 import type {ReqRespMethod} from "../reqresp/types.js";
 
@@ -33,14 +33,9 @@ export type ReqRespRequestPayload = {
   data: unknown;
 };
 
-export type ReqRespResponsePayload =
-  | {method: ReqRespMethod.Status; data: phase0.Status}
-  | {method: ReqRespMethod.BeaconBlocksByRange; data: EncodedPayloadBytes}
-  | {method: ReqRespMethod.BeaconBlocksByRoot; data: EncodedPayloadBytes};
-
 export type ReqRespOutgoingResponse = {
   requestId: number;
-  payload: IteratorEvent<EncodedPayloadBytes>;
+  payload: IteratorEvent<EncodedPayloadBytesOutgoing>;
 };
 
 export enum IteratorEventType {

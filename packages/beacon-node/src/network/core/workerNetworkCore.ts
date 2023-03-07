@@ -4,7 +4,8 @@ import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/dist/src/score/peer-score.js";
-import {allForks, altair, deneb, phase0} from "@lodestar/types";
+import {altair, deneb, phase0} from "@lodestar/types";
+import {EncodedPayloadBytesIncoming} from "@lodestar/reqresp";
 import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {spawn, Thread, Worker} from "@chainsafe/threads";
 import {BeaconConfig, chainConfigToJson} from "@lodestar/config";
@@ -109,49 +110,43 @@ export class WorkerNetworkCore implements NetworkCore {
 
   // ReqResp outgoing
 
-  status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status> {
-    return this.getApi().status(peerId, request);
-  }
-  goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void> {
-    return this.getApi().goodbye(peerId, request);
-  }
-  ping(peerId: PeerId): Promise<phase0.Ping> {
-    return this.getApi().ping(peerId);
-  }
-  metadata(peerId: PeerId): Promise<allForks.Metadata> {
-    return this.getApi().metadata(peerId);
-  }
   beaconBlocksByRange(
     peerId: PeerId,
     request: phase0.BeaconBlocksByRangeRequest
-  ): Promise<allForks.SignedBeaconBlock[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return this.getApi().beaconBlocksByRange(peerId, request);
   }
-  beaconBlocksByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<allForks.SignedBeaconBlock[]> {
+  beaconBlocksByRoot(
+    peerId: PeerId,
+    request: phase0.BeaconBlocksByRootRequest
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return this.getApi().beaconBlocksByRoot(peerId, request);
   }
-  blobsSidecarsByRange(peerId: PeerId, request: deneb.BlobsSidecarsByRangeRequest): Promise<deneb.BlobsSidecar[]> {
+  blobsSidecarsByRange(
+    peerId: PeerId,
+    request: deneb.BlobsSidecarsByRangeRequest
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return this.getApi().blobsSidecarsByRange(peerId, request);
   }
   beaconBlockAndBlobsSidecarByRoot(
     peerId: PeerId,
     request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
-  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return this.getApi().beaconBlockAndBlobsSidecarByRoot(peerId, request);
   }
-  lightClientBootstrap(peerId: PeerId, request: Uint8Array): Promise<allForks.LightClientBootstrap> {
+  lightClientBootstrap(peerId: PeerId, request: Uint8Array): Promise<EncodedPayloadBytesIncoming> {
     return this.getApi().lightClientBootstrap(peerId, request);
   }
-  lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
+  lightClientOptimisticUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
     return this.getApi().lightClientOptimisticUpdate(peerId);
   }
-  lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
+  lightClientFinalityUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
     return this.getApi().lightClientFinalityUpdate(peerId);
   }
   lightClientUpdatesByRange(
     peerId: PeerId,
     request: altair.LightClientUpdatesByRange
-  ): Promise<allForks.LightClientUpdate[]> {
+  ): Promise<EncodedPayloadBytesIncoming[]> {
     return this.getApi().lightClientUpdatesByRange(peerId, request);
   }
 
