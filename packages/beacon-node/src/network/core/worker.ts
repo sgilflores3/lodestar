@@ -32,11 +32,11 @@ if (metricsRegister) {
 }
 
 // Main event bus shared across the stack
-const networkEventBus = new NetworkEventBus();
+const events = new NetworkEventBus();
 const clock = new LocalClock({config, genesisTime: workerData.genesisTime, signal: abortController.signal});
 
 // ReqResp handles that transform internal async iterable into events
-const reqRespHandlers = getReqRespHandlersEventBased(networkEventBus);
+const reqRespHandlers = getReqRespHandlersEventBased(events);
 
 const baseNetwork = await BaseNetwork.init({
   opts: workerData.opts,
@@ -48,13 +48,13 @@ const baseNetwork = await BaseNetwork.init({
   metricsRegistry: metricsRegister,
   reqRespHandlers,
   activeValidatorCount: workerData.activeValidatorCount,
-  events: networkEventBus,
+  events,
   initialStatus: workerData.initialStatus,
 });
 
 const pendingGossipsubMessageSubject = new Subject<PendingGossipsubMessage>();
 
-networkEventBus.on(NetworkEvent.pendingGossipsubMessage, (data) => {
+events.on(NetworkEvent.pendingGossipsubMessage, (data) => {
   pendingGossipsubMessageSubject.next(data);
 });
 
