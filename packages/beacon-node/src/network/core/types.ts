@@ -1,16 +1,17 @@
-import {PublishResult} from "@libp2p/interface-pubsub";
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
-import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
+import {PublishResult} from "@libp2p/interface-pubsub";
 import {Observable} from "@chainsafe/threads/observable";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {phase0} from "@lodestar/types";
+import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {NetworkOptions} from "../options.js";
-import {IReqRespBeaconNodeBeaconBytes} from "../reqresp/interface.js";
+import {IReqRespBeaconNode, IReqRespBeaconNodeBytes} from "../reqresp/interface.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
-import {PeerScoreStats} from "../peers/index.js";
+import {PeerAction, PeerScoreStats} from "../peers/index.js";
+import {PublisherBeaconNode} from "../gossip/interface.js";
 
 export interface IBaseNetwork {
   close(): Promise<void>;
@@ -24,6 +25,8 @@ export interface IBaseNetwork {
   prepareBeaconCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void>;
   /** Subscribe, search peers, join long-lived syncnets */
   prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void>;
+  reStatusPeers(peers: PeerId[]): Promise<void>;
+  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void;
 
   // REST API getters
   getConnectedPeers(): Promise<PeerId[]>;
@@ -31,7 +34,6 @@ export interface IBaseNetwork {
   getNetworkIdentity(): Promise<routes.node.NetworkIdentity>;
 
   // Gossip control
-  publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;
   subscribeGossipCoreTopics(): Promise<void>;
   unsubscribeGossipCoreTopics(): Promise<void>;
   // isSubscribedToGossipCoreTopics(): Promise<boolean>;
@@ -52,7 +54,10 @@ export interface IBaseNetwork {
  *
  * All properties/methods should be async to allow for a worker implementation
  */
-export interface NetworkCore extends IBaseNetwork, IReqRespBeaconNodeBeaconBytes {}
+export interface NetworkCore extends IBaseNetwork {
+  gossip: PublisherBeaconNode;
+  reqResp: IReqRespBeaconNode;
+}
 
 /**
  * libp2p worker contructor (start-up) data
@@ -64,20 +69,22 @@ export type NetworkWorkerData = {
   genesisValidatorsRoot: Uint8Array;
   genesisTime: number;
   activeValidatorCount: number;
+  initialStatus: phase0.Status;
   peerIdProto: Uint8Array;
   bindAddr: string;
   metrics: boolean;
-  peerStoreDir: string;
+  peerStoreDir?: string;
 };
 
 /**
  * API exposed by the libp2p worker
  */
 export type NetworkWorkerApi = IBaseNetwork &
-  IReqRespBeaconNodeBeaconBytes & {
+  IReqRespBeaconNodeBytes & {
     // TODO: Gossip events
     // Main -> Worker: NetworkEvent.gossipMessageValidationResult
     // Worker -> Main: NetworkEvent.pendingGossipsubMessage
+    publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;
     pendingGossipsubMessage(): Observable<PendingGossipsubMessage>;
 
     // TODO: ReqResp outgoing

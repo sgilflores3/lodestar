@@ -1,15 +1,13 @@
-import {EventEmitter} from "events";
 import {Libp2p} from "libp2p";
 import {Message, PublishResult, TopicValidatorResult} from "@libp2p/interface-pubsub";
-import StrictEventEmitter from "strict-event-emitter-types";
 import {PeerIdStr} from "@chainsafe/libp2p-gossipsub/types";
 import {ForkName} from "@lodestar/params";
 import {allForks, altair, capella, deneb, phase0, Slot} from "@lodestar/types";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger} from "@lodestar/utils";
 import {IBeaconChain} from "../../chain/index.js";
-import {NetworkEvent} from "../events.js";
 import {JobItemQueue} from "../../util/queue/index.js";
+import {BlockInput} from "../../chain/blocks/types.js";
 
 export enum GossipType {
   beacon_block = "beacon_block",
@@ -107,14 +105,6 @@ export type GossipFnByType = {
 
 export type GossipFn = GossipFnByType[keyof GossipFnByType];
 
-export type GossipEvents = {
-  [topicStr: string]: GossipFn;
-  [NetworkEvent.gossipHeartbeat]: () => void;
-  [NetworkEvent.gossipStart]: () => void;
-  [NetworkEvent.gossipStop]: () => void;
-};
-export type GossipEventEmitter = StrictEventEmitter<EventEmitter, GossipEvents>;
-
 export type GossipModules = {
   config: BeaconConfig;
   libp2p: Libp2p;
@@ -122,7 +112,8 @@ export type GossipModules = {
   chain: IBeaconChain;
 };
 
-export type GossipBeaconNode = {
+export type PublisherBeaconNode = {
+  publishBeaconBlockMaybeBlobs(signedBlock: BlockInput): Promise<PublishResult>;
   publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<PublishResult>;
   publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<PublishResult>;
   publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<PublishResult>;

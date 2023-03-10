@@ -19,7 +19,7 @@ import {StatusCache} from "../status.js";
 import {BaseNetworkMetrics} from "../core/metrics.js";
 import {PeersData, PeerData} from "./peersData.js";
 import {PeerDiscovery, SubnetDiscvQueryMs} from "./discover.js";
-import {IPeerRpcScoreStore, PeerScoreStats, ScoreState, updateGossipsubScores} from "./score.js";
+import {IPeerRpcScoreStore, PeerAction, PeerScoreStats, ScoreState, updateGossipsubScores} from "./score.js";
 import {clientFromAgentVersion, ClientKind} from "./client.js";
 import {
   getConnectedPeerIds,
@@ -92,7 +92,7 @@ export type PeerManagerModules = {
   clock: BeaconClock;
   config: BeaconConfig;
   peerRpcScores: IPeerRpcScoreStore;
-  networkEventBus: INetworkEventBus;
+  events: INetworkEventBus;
   peersData: PeersData;
   statusCache: StatusCache;
 };
@@ -146,7 +146,7 @@ export class PeerManager {
     this.clock = modules.clock;
     this.config = modules.config;
     this.peerRpcScores = modules.peerRpcScores;
-    this.networkEventBus = modules.networkEventBus;
+    this.networkEventBus = modules.events;
     this.statusCache = modules.statusCache;
     this.connectedPeers = modules.peersData.connectedPeers;
     this.opts = opts;
@@ -171,7 +171,6 @@ export class PeerManager {
     await this.discovery?.start();
     this.libp2p.connectionManager.addEventListener(Libp2pEvent.peerConnect, this.onLibp2pPeerConnect);
     this.libp2p.connectionManager.addEventListener(Libp2pEvent.peerDisconnect, this.onLibp2pPeerDisconnect);
-    this.networkEventBus.on(NetworkEvent.reqRespRequest, this.onRequest);
     this.networkEventBus.on(NetworkEvent.reqRespRequest, this.onRequest);
 
     // On start-up will connected to existing peers in libp2p.peerStore, same as autoDial behaviour
@@ -224,6 +223,10 @@ export class PeerManager {
 
     // Request to run heartbeat fn
     this.heartbeat();
+  }
+
+  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void {
+    this.peerRpcScores.applyAction(peer, action, actionName);
   }
 
   /**

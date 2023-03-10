@@ -36,33 +36,29 @@ export interface IReqRespBeaconNodeBeacon {
   ): Promise<allForks.LightClientUpdate[]>;
 }
 
+export type IReqRespBeaconNode = IReqRespBeaconNodePeerManager & IReqRespBeaconNodeBeacon;
+
+// Types for crossing thread boundary
+
+type WithEncodedReturnType<T, R = EncodedPayloadBytesIncoming> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [K in keyof T]: T[K] extends (...args: any) => any
+    ? (...args: Parameters<T[K]>) => ReturnType<T[K]> extends Promise<unknown[]> ? Promise<R[]> : Promise<R>
+    : never;
+};
+
 /**
  * Same as {@see IReqRespBeaconNodeBeacon} but responses are encoded to cross the worker boundary
  */
-export interface IReqRespBeaconNodeBeaconBytes {
-  beaconBlocksByRange(
-    peerId: PeerId,
-    request: phase0.BeaconBlocksByRangeRequest
-  ): Promise<EncodedPayloadBytesIncoming[]>;
-  beaconBlocksByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<EncodedPayloadBytesIncoming[]>;
-  blobsSidecarsByRange(
-    peerId: PeerId,
-    request: deneb.BlobsSidecarsByRangeRequest
-  ): Promise<EncodedPayloadBytesIncoming[]>;
-  beaconBlockAndBlobsSidecarByRoot(
-    peerId: PeerId,
-    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
-  ): Promise<EncodedPayloadBytesIncoming[]>;
-  lightClientBootstrap(peerId: PeerId, request: Uint8Array): Promise<EncodedPayloadBytesIncoming>;
-  lightClientOptimisticUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming>;
-  lightClientFinalityUpdate(peerId: PeerId): Promise<EncodedPayloadBytesIncoming>;
-  lightClientUpdatesByRange(
-    peerId: PeerId,
-    request: altair.LightClientUpdatesByRange
-  ): Promise<EncodedPayloadBytesIncoming[]>;
-}
-
-export interface IReqRespBeaconNode extends IReqRespBeaconNodePeerManager, IReqRespBeaconNodeBeacon {}
+export type IReqRespBeaconNodeBeaconBytes = WithEncodedReturnType<IReqRespBeaconNodeBeacon>;
+/**
+ * Same as {@see IReqRespBeaconNodePeerManager} but responses are encoded to cross the worker boundary
+ */
+export type IReqRespBeaconNodePeerManagerBytes = WithEncodedReturnType<IReqRespBeaconNodePeerManager>;
+/**
+ * Same as {@see IReqRespBeaconNode} but responses are encoded to cross the worker boundary
+ */
+export type IReqRespBeaconNodeBytes = IReqRespBeaconNodeBeaconBytes & IReqRespBeaconNodePeerManagerBytes;
 
 /**
  * Rate limiter interface for inbound and outbound requests.

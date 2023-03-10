@@ -165,7 +165,7 @@ export class ReqRespByEventsMain {
     try {
       // TODO TEMP: figure out types here more safely
       const handler: ReqRespHandler<unknown, EncodedPayloadBytesOutgoing> | undefined = this.handlers[
-        data.payload.method
+        data.payload.method as keyof ReqRespHandlers
       ];
       if (handler === undefined) {
         throw Error(`Unknown reqresp method ${data.payload.method}`);

@@ -26,7 +26,7 @@ import {PeersData} from "../peers/peersData.js";
 import {IPeerRpcScoreStore, PeerAction} from "../peers/score.js";
 import {BaseNetworkMetrics} from "../core/metrics.js";
 import {ReqRespHandlers} from "./handlers/index.js";
-import {IReqRespBeaconNode} from "./interface.js";
+import {IReqRespBeaconNode, IReqRespBeaconNodeBytes} from "./interface.js";
 import {onOutgoingReqRespError} from "./score.js";
 import {ReqRespMethod, RequestTypedContainer, Version} from "./types.js";
 import {collectSequentialBlocksInRange} from "./utils/collectSequentialBlocksInRange.js";
@@ -51,7 +51,7 @@ export interface ReqRespBeaconNodeModules {
   reqRespHandlers: ReqRespHandlers;
   metadata: MetadataController;
   peerRpcScores: IPeerRpcScoreStore;
-  networkEventBus: INetworkEventBus;
+  events: INetworkEventBus;
 }
 
 export type ReqRespBeaconNodeOpts = ReqRespOpts;
@@ -76,7 +76,7 @@ export class ReqRespBeaconNode extends ReqResp {
   protected readonly logger: Logger;
 
   constructor(modules: ReqRespBeaconNodeModules, options: ReqRespBeaconNodeOpts = {}) {
-    const {reqRespHandlers, networkEventBus, peersData, peerRpcScores, metadata, metrics, logger} = modules;
+    const {reqRespHandlers, events, peersData, peerRpcScores, metadata, metrics, logger} = modules;
 
     super(
       {
@@ -102,7 +102,7 @@ export class ReqRespBeaconNode extends ReqResp {
     this.config = modules.config;
     this.logger = logger;
     this.metadataController = metadata;
-    this.networkEventBus = networkEventBus;
+    this.networkEventBus = events;
   }
 
   async start(): Promise<void> {
@@ -145,9 +145,9 @@ export class ReqRespBeaconNode extends ReqResp {
     return collectExactOne(this.sendRequest<phase0.Status>(peerId, ReqRespMethod.Status, [Version.V1], request));
   }
 
-  async goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void> {
+  async goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<EncodedPayloadBytesIncoming> {
     // TODO: Replace with "ignore response after request"
-    await collectExactOne(this.sendRequest<phase0.Goodbye>(peerId, ReqRespMethod.Goodbye, [Version.V1], request));
+    return collectExactOne(this.sendRequest<phase0.Goodbye>(peerId, ReqRespMethod.Goodbye, [Version.V1], request));
   }
 
   async ping(peerId: PeerId): Promise<EncodedPayloadBytesIncoming> {
@@ -404,7 +404,7 @@ export class ReqRespBeaconNode extends ReqResp {
 // Beacon fns are already implemented now in main Network class
 // Peer manager methods should be implemented somewhere else
 export class ReqRespBeaconNodeFrontEnd implements IReqRespBeaconNode {
-  constructor(private readonly reqResp: ReqRespBeaconNode) {}
+  constructor(private readonly reqResp: IReqRespBeaconNodeBytes) {}
 
   async status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status> {
     const item = await this.reqResp.status(peerId, request);

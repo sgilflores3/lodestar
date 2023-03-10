@@ -9,27 +9,34 @@ import {EncodedPayloadBytesIncoming} from "@lodestar/reqresp";
 import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {spawn, Thread, Worker} from "@chainsafe/threads";
 import {BeaconConfig, chainConfigToJson} from "@lodestar/config";
+import {Logger} from "@lodestar/utils";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {CommitteeSubscription} from "../subnets/interface.js";
-import {PeerScoreStats} from "../peers/index.js";
+import {PeerAction, PeerScoreStats} from "../peers/index.js";
 import {NetworkOptions} from "../options.js";
+import {IReqRespBeaconNode} from "../reqresp/interface.js";
+import {PublisherBeaconNode} from "../gossip/interface.js";
+import {ReqRespBeaconNodeFrontEnd} from "../reqresp/ReqRespBeaconNode.js";
+import {GossipPublisher} from "../gossip/publisher.js";
 import {NetworkWorkerApi, NetworkWorkerData, NetworkCore} from "./types.js";
 
 export type WorkerNetworkCoreOpts = NetworkOptions & {
   metrics: boolean;
-  peerStoreDir: string;
+  peerStoreDir?: string;
+  activeValidatorCount: number;
+  genesisTime: number;
+  initialStatus: phase0.Status;
 };
 
-export type Libp2pkWorkerWrapperInitModules = {
+export type WorkerNetworkCoreInitModules = {
   opts: WorkerNetworkCoreOpts;
   config: BeaconConfig;
-  genesisTime: number;
-  activeValidatorCount: number;
+  logger: Logger;
   peerId: PeerId;
   events: NetworkEventBus;
 };
 
-type Libp2pkWorkerWrapperModules = Libp2pkWorkerWrapperInitModules & {
+type WorkerNetworkCoreModules = WorkerNetworkCoreInitModules & {
   workerApi: NetworkWorkerApi;
 };
 
@@ -37,25 +44,38 @@ type Libp2pkWorkerWrapperModules = Libp2pkWorkerWrapperInitModules & {
  * NetworkCore implementation using a Worker thread
  */
 export class WorkerNetworkCore implements NetworkCore {
-  constructor(private readonly modules: Libp2pkWorkerWrapperModules) {}
+  readonly reqResp: IReqRespBeaconNode;
+  readonly gossip: PublisherBeaconNode;
 
-  static async init(modules: Libp2pkWorkerWrapperInitModules): Promise<WorkerNetworkCore> {
-    const {opts, config, genesisTime, peerId, events} = modules;
+  constructor(private readonly modules: WorkerNetworkCoreModules) {
+    this.reqResp = new ReqRespBeaconNodeFrontEnd(modules.workerApi);
+    this.gossip = new GossipPublisher({
+      config: modules.config,
+      logger: modules.logger,
+      publishGossip: modules.workerApi.publishGossip.bind(modules.workerApi.publishGossip),
+    });
+  }
+
+  static async init(modules: WorkerNetworkCoreInitModules): Promise<WorkerNetworkCore> {
+    const {opts, config, peerId, events} = modules;
+    const {genesisTime, peerStoreDir, activeValidatorCount, bindAddr, metrics, initialStatus} = opts;
 
     const workerData: NetworkWorkerData = {
       opts,
       chainConfigJson: chainConfigToJson(config),
       genesisValidatorsRoot: config.genesisValidatorsRoot,
       peerIdProto: exportToProtobuf(peerId),
-      bindAddr: opts.bindAddr,
-      metrics: opts.metrics,
-      peerStoreDir: opts.peerStoreDir,
+      bindAddr,
+      metrics,
+      peerStoreDir,
       genesisTime,
-      activeValidatorCount: modules.activeValidatorCount,
+      initialStatus,
+      activeValidatorCount,
     };
 
     const worker = new Worker("./worker.js", {workerData} as ConstructorParameters<typeof Worker>[1]);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const workerApi = ((await spawn<any>(worker, {
       // A Lodestar Node may do very expensive task at start blocking the event loop and causing
       // the initialization to timeout. The number below is big enough to almost disable the timeout
@@ -86,6 +106,14 @@ export class WorkerNetworkCore implements NetworkCore {
 
   updateStatus(status: phase0.Status): Promise<void> {
     return this.getApi().updateStatus(status);
+  }
+
+  reStatusPeers(peers: PeerId[]): Promise<void> {
+    return this.getApi().reStatusPeers(peers);
+  }
+
+  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void {
+    return this.getApi().reportPeer(peer, action, actionName);
   }
 
   publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult> {

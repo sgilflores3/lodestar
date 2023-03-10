@@ -1,41 +1,30 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
-import {PublishResult} from "@libp2p/interface-pubsub";
-import {Type} from "@chainsafe/ssz";
-import {EncodedPayloadBytesIncoming} from "@lodestar/reqresp";
-import {ForkName, isForkLightClient} from "@lodestar/params";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger, sleep} from "@lodestar/utils";
-import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {computeTimeAtSlot} from "@lodestar/state-transition";
-import {deneb, phase0, allForks, altair, capella, ssz, Root} from "@lodestar/types";
+import {phase0, allForks} from "@lodestar/types";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/score";
 import {Metrics, RegistryMetricCreator} from "../metrics/index.js";
 import {IBeaconChain, BeaconClock} from "../chain/index.js";
-import {BlockInput, BlockInputType} from "../chain/blocks/types.js";
+import {BlockInput} from "../chain/blocks/types.js";
 import {IBeaconDb} from "../db/interface.js";
 import {LocalClock} from "../chain/clock/LocalClock.js";
 import {PeerSet} from "../util/peerMap.js";
 import {NetworkOptions} from "./options.js";
 import {INetwork} from "./interface.js";
-import {ReqRespHandlers, beaconBlocksMaybeBlobsByRange} from "./reqresp/index.js";
+import {ReqRespHandlers, beaconBlocksMaybeBlobsByRange, IReqRespBeaconNode} from "./reqresp/index.js";
 import {beaconBlocksMaybeBlobsByRoot} from "./reqresp/beaconBlocksMaybeBlobsByRoot.js";
-import {GossipHandlers, GossipType, GossipTypeMap, GossipTopicMap} from "./gossip/index.js";
+import {GossipHandlers, GossipType, PublisherBeaconNode} from "./gossip/index.js";
 import {PeerAction, PeerScoreStats} from "./peers/index.js";
 import {INetworkEventBus, NetworkEvent, NetworkEventBus} from "./events.js";
 import {CommitteeSubscription} from "./subnets/index.js";
 import {isPublishToZeroPeersError} from "./util.js";
 import {NetworkProcessor} from "./processor/index.js";
 import {PendingGossipsubMessage} from "./processor/types.js";
-import {
-  getGossipSSZType,
-  gossipTopicIgnoreDuplicatePublishError,
-  stringifyGossipTopic,
-  toGossipTopic,
-} from "./gossip/topic.js";
-import {MainThreadNetworkCore, NetworkCore} from "./core/index.js";
-import {forkNameFromContextBytes} from "./reqresp/utils/contextBytes.js";
+import {NetworkCore, WorkerNetworkCore} from "./core/index.js";
+import {BaseNetwork} from "./core/baseNetwork.js";
 
 type NetworkModules = {
   opts: NetworkOptions;
@@ -76,6 +65,8 @@ export class Network implements INetwork {
   readonly peerId: PeerId;
   // TODO: Make private
   readonly events: INetworkEventBus;
+  readonly gossip: PublisherBeaconNode;
+  readonly reqResp: IReqRespBeaconNode;
 
   private readonly logger: Logger;
   private readonly config: BeaconConfig;
@@ -102,6 +93,8 @@ export class Network implements INetwork {
     this.events = modules.networkEventBus;
     this.networkProcessor = modules.networkProcessor;
     this.core = modules.core;
+    this.gossip = this.core.gossip;
+    this.reqResp = this.core.reqResp;
 
     this.events.on(NetworkEvent.peerConnected, this.onPeerConnected);
     this.events.on(NetworkEvent.peerDisconnected, this.onPeerDisconnected);
@@ -124,48 +117,49 @@ export class Network implements INetwork {
     peerStoreDir,
     reqRespHandlers,
   }: NetworkInitModules): Promise<Network> {
-    const networkEventBus = new NetworkEventBus();
+    const events = new NetworkEventBus();
 
-    const networkProcessor = new NetworkProcessor(
-      {chain, db, config, logger, metrics, events: networkEventBus, gossipHandlers},
-      opts
-    );
+    const networkProcessor = new NetworkProcessor({chain, db, config, logger, metrics, events, gossipHandlers}, opts);
 
     let core: NetworkCore;
+    const activeValidatorCount = chain.getHeadState().epochCtx.currentShuffling.activeIndices.length;
+    const initialStatus = chain.getStatus();
     // eslint-disable-next-line no-constant-condition
-    if (true) {
+    if (!opts.useWorker) {
       const metricsRegistry = metrics ? new RegistryMetricCreator() : null;
       const clock = chain.clock as LocalClock;
-      const status = chain.getStatus();
-      const activeValidatorCount = chain.getHeadState().epochCtx.currentShuffling.activeIndices.length;
 
-      core = await MainThreadNetworkCore.init({
+      core = await BaseNetwork.init({
         opts,
         config,
         peerId,
         peerStoreDir,
         logger,
         clock,
-        networkEventBus,
+        events,
         metricsRegistry,
         reqRespHandlers,
-        status,
+        initialStatus,
         activeValidatorCount,
       });
     } else {
-      /*
-      worker = await WorkerNetworkCore.init({
-        opts,
+      core = await WorkerNetworkCore.init({
+        opts: {
+          ...opts,
+          peerStoreDir,
+          metrics: Boolean(metrics),
+          activeValidatorCount,
+          genesisTime: chain.genesisTime,
+          initialStatus,
+        },
         config,
-        genesisTime: chain.genesisTime,
         peerId,
-        events: networkEventBus,
-        activeValidatorCount: chain.getHeadState().epochCtx.currentShuffling.activeIndices.length,
+        logger,
+        events,
       });
-      */
     }
 
-    const multiaddresses = opts.localMultiaddrs.join(",");
+    const multiaddresses = opts.bootMultiaddrs?.join(",");
     logger.info(`PeerId ${peerId.toString()}, Multiaddrs ${multiaddresses}`);
 
     return new Network({
@@ -175,7 +169,7 @@ export class Network implements INetwork {
       logger,
       chain,
       signal,
-      networkEventBus,
+      networkEventBus: events,
       networkProcessor,
       core,
     });
@@ -199,19 +193,6 @@ export class Network implements INetwork {
     // const discv5 = this.peerManager["discovery"]?.discv5;
     // return (await this.discv5?.metrics()) ?? "";
     return this.core.scrapeMetrics();
-  }
-
-  async publishBeaconBlockMaybeBlobs(blockInput: BlockInput): Promise<PublishResult> {
-    switch (blockInput.type) {
-      case BlockInputType.preDeneb:
-        return this.publishBeaconBlock(blockInput.block);
-
-      case BlockInputType.postDeneb:
-        return this.publishSignedBeaconBlockAndBlobsSidecar({
-          beaconBlock: blockInput.block as deneb.SignedBeaconBlock,
-          blobsSidecar: blockInput.blobs,
-        });
-    }
   }
 
   async beaconBlocksMaybeBlobsByRange(
@@ -247,13 +228,11 @@ export class Network implements INetwork {
    * The app layer needs to refresh the status of some peers. The sync have reached a target
    */
   async reStatusPeers(peers: PeerId[]): Promise<void> {
-    // TODO: Should be event or function call?
-    this.events.emit(NetworkEvent.restatusPeers, peers);
+    return this.core.reStatusPeers(peers);
   }
 
-  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void {
-    // TODO: Should be event or function call?
-    this.events.emit(NetworkEvent.reportPeer, peer, action, actionName);
+  async reportPeer(peer: PeerId, action: PeerAction, actionName: string): Promise<void> {
+    return this.core.reportPeer(peer, action, actionName);
   }
 
   // REST API queries
@@ -291,166 +270,6 @@ export class Network implements INetwork {
 
   isSubscribedToGossipCoreTopics(): boolean {
     return this.subscribedToCoreTopics;
-  }
-
-  // Gossip publish
-
-  async publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.beaconBlock(this.config, signedBlock), signedBlock);
-  }
-
-  async publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.signedBeaconBlockAndBlobsSidecar(this.config, item), item);
-  }
-
-  async publishBeaconAggregateAndProof(aggregate: phase0.SignedAggregateAndProof): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.beaconAggregateAndProof(this.config, aggregate), aggregate);
-  }
-
-  async publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.beaconAttestation(this.config, attestation, subnet), attestation);
-  }
-
-  async publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.voluntaryExit(this.config, voluntaryExit), voluntaryExit);
-  }
-
-  async publishBlsToExecutionChange(blsToExecutionChange: capella.SignedBLSToExecutionChange): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.blsToExecutionChange(), blsToExecutionChange);
-  }
-
-  async publishProposerSlashing(proposerSlashing: phase0.ProposerSlashing): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.proposerSlashing(this.config, proposerSlashing), proposerSlashing);
-  }
-
-  async publishAttesterSlashing(attesterSlashing: phase0.AttesterSlashing): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.attesterSlashing(this.config, attesterSlashing), attesterSlashing);
-  }
-
-  async publishSyncCommitteeSignature(signature: altair.SyncCommitteeMessage, subnet: number): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.syncCommitteeSignature(this.config, signature, subnet), signature);
-  }
-
-  async publishContributionAndProof(contribution: altair.SignedContributionAndProof): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.contributionAndProof(this.config, contribution), contribution);
-  }
-
-  async publishLightClientFinalityUpdate(update: allForks.LightClientFinalityUpdate): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.lightClientFinalityUpdate(this.config, update), update);
-  }
-
-  async publishLightClientOptimisticUpdate(update: allForks.LightClientOptimisticUpdate): Promise<PublishResult> {
-    return this.publishGossipObject(toGossipTopic.lightClientOptimisticUpdate(this.config, update), update);
-  }
-
-  /**
-   * Publish a `GossipObject` on a `GossipTopic`
-   */
-  private async publishGossipObject<K extends GossipType>(
-    topic: GossipTopicMap[K],
-    object: GossipTypeMap[K],
-    opts?: PublishOpts | undefined
-  ): Promise<PublishResult> {
-    const topicStr = stringifyGossipTopic(this.config, topic);
-
-    const sszType = getGossipSSZType(topic);
-    const data = (sszType.serialize as (object: GossipTypeMap[GossipType]) => Uint8Array)(object);
-
-    opts = {
-      ...opts,
-      ignoreDuplicatePublishError: gossipTopicIgnoreDuplicatePublishError[topic.type],
-    };
-
-    // Call worker here
-    const publishResult = await this.core.publishGossip(topicStr, data, opts);
-    const sentPeers = publishResult.recipients.length;
-    this.logger.verbose("Publish to topic", {topic: topicStr, sentPeers});
-    return publishResult;
-  }
-
-  // ReqResp
-
-  // ReqResp outgoing
-
-  async beaconBlocksByRange(
-    peerId: PeerId,
-    request: phase0.BeaconBlocksByRangeRequest
-  ): Promise<allForks.SignedBeaconBlock[]> {
-    const items = await this.core.beaconBlocksByRange(peerId, request);
-    return items.map((item) => this.decodeReqRespResponse(item, (forkName) => ssz[forkName].SignedBeaconBlock));
-  }
-
-  async beaconBlocksByRoot(
-    peerId: PeerId,
-    request: phase0.BeaconBlocksByRootRequest
-  ): Promise<allForks.SignedBeaconBlock[]> {
-    const items = await this.core.beaconBlocksByRoot(peerId, request);
-    return items.map((item) => this.decodeReqRespResponse(item, (forkName) => ssz[forkName].SignedBeaconBlock));
-  }
-
-  async lightClientBootstrap(peerId: PeerId, request: Root): Promise<allForks.LightClientBootstrap> {
-    const item = await this.core.lightClientBootstrap(peerId, request);
-    return this.decodeReqRespResponse(item, (forkName) =>
-      isForkLightClient(forkName)
-        ? ssz.allForksLightClient[forkName].LightClientBootstrap
-        : ssz.altair.LightClientBootstrap
-    );
-  }
-
-  async lightClientOptimisticUpdate(peerId: PeerId): Promise<allForks.LightClientOptimisticUpdate> {
-    const item = await this.core.lightClientOptimisticUpdate(peerId);
-    return this.decodeReqRespResponse(item, (forkName) =>
-      isForkLightClient(forkName)
-        ? ssz.allForksLightClient[forkName].LightClientOptimisticUpdate
-        : ssz.altair.LightClientOptimisticUpdate
-    );
-  }
-
-  async lightClientFinalityUpdate(peerId: PeerId): Promise<allForks.LightClientFinalityUpdate> {
-    const item = await this.core.lightClientFinalityUpdate(peerId);
-    return this.decodeReqRespResponse(item, (forkName) =>
-      isForkLightClient(forkName)
-        ? ssz.allForksLightClient[forkName].LightClientFinalityUpdate
-        : ssz.altair.LightClientFinalityUpdate
-    );
-  }
-
-  async lightClientUpdatesByRange(
-    peerId: PeerId,
-    request: altair.LightClientUpdatesByRange
-  ): Promise<allForks.LightClientUpdate[]> {
-    const items = await this.core.lightClientUpdatesByRange(peerId, request);
-    return items.map((item) =>
-      this.decodeReqRespResponse(item, (forkName) =>
-        isForkLightClient(forkName) ? ssz.allForksLightClient[forkName].LightClientUpdate : ssz.altair.LightClientUpdate
-      )
-    );
-  }
-
-  async blobsSidecarsByRange(
-    peerId: PeerId,
-    request: deneb.BlobsSidecarsByRangeRequest
-  ): Promise<deneb.BlobsSidecar[]> {
-    const items = await this.core.blobsSidecarsByRange(peerId, request);
-    return items.map((item) => this.decodeReqRespResponse(item, () => ssz.deneb.BlobsSidecar));
-  }
-
-  async beaconBlockAndBlobsSidecarByRoot(
-    peerId: PeerId,
-    request: deneb.BeaconBlockAndBlobsSidecarByRootRequest
-  ): Promise<deneb.SignedBeaconBlockAndBlobsSidecar[]> {
-    const items = await this.core.beaconBlockAndBlobsSidecarByRoot(peerId, request);
-    return items.map((item) => this.decodeReqRespResponse(item, () => ssz.deneb.SignedBeaconBlockAndBlobsSidecar));
-  }
-
-  private decodeReqRespResponse<T>(
-    respData: EncodedPayloadBytesIncoming,
-    getType: (fork: ForkName, protocolVersion: number) => Type<T>
-  ): T {
-    // TODO: Handle error and propagate to downscore peer
-    const fork = forkNameFromContextBytes(respData.contextBytes);
-    const type = getType(fork, respData.protocolVersion);
-    return type.deserialize(respData.bytes);
   }
 
   // Debug
@@ -554,7 +373,7 @@ export class Network implements INetwork {
       // messages SHOULD be broadcast after one-third of slot has transpired
       // https://github.com/ethereum/consensus-specs/blob/dev/specs/altair/light-client/p2p-interface.md#sync-committee
       await this.waitOneThirdOfSlot(finalityUpdate.signatureSlot);
-      await this.publishLightClientFinalityUpdate(finalityUpdate);
+      await this.gossip.publishLightClientFinalityUpdate(finalityUpdate);
     } catch (e) {
       // Non-mandatory route on most of network as of Oct 2022. May not have found any peers on topic yet
       // Remove once https://github.com/ChainSafe/js-libp2p-gossipsub/issues/367
@@ -573,7 +392,7 @@ export class Network implements INetwork {
       // messages SHOULD be broadcast after one-third of slot has transpired
       // https://github.com/ethereum/consensus-specs/blob/dev/specs/altair/light-client/p2p-interface.md#sync-committee
       await this.waitOneThirdOfSlot(optimisticUpdate.signatureSlot);
-      await this.publishLightClientOptimisticUpdate(optimisticUpdate);
+      await this.gossip.publishLightClientOptimisticUpdate(optimisticUpdate);
     } catch (e) {
       // Non-mandatory route on most of network as of Oct 2022. May not have found any peers on topic yet
       // Remove once https://github.com/ChainSafe/js-libp2p-gossipsub/issues/367

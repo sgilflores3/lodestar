@@ -1,18 +1,16 @@
 import {PeerId} from "@libp2p/interface-peer-id";
 import {Multiaddr} from "@multiformats/multiaddr";
 import {Connection} from "@libp2p/interface-connection";
-import {PublishResult} from "@libp2p/interface-pubsub";
 import {routes} from "@lodestar/api";
 import {PeerScoreStatsDump} from "@chainsafe/libp2p-gossipsub/dist/src/score/peer-score.js";
 import {BeaconConfig} from "@lodestar/config";
 import {Logger} from "@lodestar/utils";
 import {Epoch, phase0} from "@lodestar/types";
 import {ForkName} from "@lodestar/params";
-import {PublishOpts} from "@chainsafe/libp2p-gossipsub/types";
 import {Libp2p} from "../interface.js";
 import {PeerManager} from "../peers/peerManager.js";
-import {ReqRespBeaconNode, ReqRespHandlers} from "../reqresp/ReqRespBeaconNode.js";
-import {Eth2Gossipsub, getCoreTopicsAtFork} from "../gossip/index.js";
+import {ReqRespBeaconNode, ReqRespBeaconNodeFrontEnd, ReqRespHandlers} from "../reqresp/ReqRespBeaconNode.js";
+import {Eth2Gossipsub, getCoreTopicsAtFork, GossipPublisher} from "../gossip/index.js";
 import {AttnetsService} from "../subnets/attnetsService.js";
 import {SyncnetsService} from "../subnets/syncnetsService.js";
 import {FORK_EPOCH_LOOKAHEAD, getActiveForks} from "../forks.js";
@@ -21,7 +19,7 @@ import {CommitteeSubscription} from "../subnets/interface.js";
 import {MetadataController} from "../metadata.js";
 import {createNodeJsLibp2p} from "../nodejs/util.js";
 import {PeersData} from "../peers/peersData.js";
-import {PeerRpcScoreStore, PeerScoreStats} from "../peers/index.js";
+import {PeerAction, PeerRpcScoreStore, PeerScoreStats} from "../peers/index.js";
 
 import {getConnectionsMap} from "../util.js";
 import {ClockEvent, LocalClock} from "../../chain/clock/index.js";
@@ -31,12 +29,14 @@ import {Discv5Worker} from "../discv5/index.js";
 import {LocalStatusCache} from "../status.js";
 import {RegistryMetricCreator} from "../../metrics/index.js";
 import {BaseNetworkMetrics, createBaseNetworkMetrics} from "./metrics.js";
-import {IBaseNetwork} from "./types.js";
+import {NetworkCore} from "./types.js";
 
 type Mods = {
   libp2p: Libp2p;
-  reqResp: ReqRespBeaconNode;
-  gossip: Eth2Gossipsub;
+  rawGossip: Eth2Gossipsub;
+  gossip: GossipPublisher;
+  rawReqResp: ReqRespBeaconNode;
+  reqResp: ReqRespBeaconNodeFrontEnd;
   attnetsService: AttnetsService;
   syncnetsService: SyncnetsService;
   peerManager: PeerManager;
@@ -59,7 +59,7 @@ export type BaseNetworkInit = {
   metricsRegistry: RegistryMetricCreator | null;
   reqRespHandlers: ReqRespHandlers;
   clock: LocalClock;
-  networkEventBus: NetworkEventBus;
+  events: NetworkEventBus;
   activeValidatorCount: number;
   initialStatus: phase0.Status;
 };
@@ -80,9 +80,11 @@ export type BaseNetworkInit = {
  * - PeerManager
  * - NetworkProcessor: Must be in the main thread, depends on chain
  */
-export class BaseNetwork implements IBaseNetwork {
-  readonly gossip: Eth2Gossipsub;
-  readonly reqResp: ReqRespBeaconNode;
+export class BaseNetwork implements NetworkCore {
+  readonly rawGossip: Eth2Gossipsub;
+  readonly gossip: GossipPublisher;
+  readonly rawReqResp: ReqRespBeaconNode;
+  readonly reqResp: ReqRespBeaconNodeFrontEnd;
 
   // Internal modules
   private readonly libp2p: Libp2p;
@@ -105,8 +107,10 @@ export class BaseNetwork implements IBaseNetwork {
 
   constructor(modules: Mods) {
     this.libp2p = modules.libp2p;
-    this.reqResp = modules.reqResp;
+    this.rawGossip = modules.rawGossip;
     this.gossip = modules.gossip;
+    this.rawReqResp = modules.rawReqResp;
+    this.reqResp = modules.reqResp;
     this.attnetsService = modules.attnetsService;
     this.syncnetsService = modules.syncnetsService;
     this.peerManager = modules.peerManager;
@@ -130,7 +134,7 @@ export class BaseNetwork implements IBaseNetwork {
     logger,
     metricsRegistry,
     reqRespHandlers,
-    networkEventBus,
+    events,
     clock,
     activeValidatorCount,
     initialStatus,
@@ -155,15 +159,17 @@ export class BaseNetwork implements IBaseNetwork {
     };
     const metadata = new MetadataController({}, {config, onSetValue: onMetadataSetValue, logger});
 
-    const reqResp = new ReqRespBeaconNode(
-      {config, libp2p, reqRespHandlers, metadata, peerRpcScores, logger, networkEventBus, metrics, peersData},
+    const rawReqResp = new ReqRespBeaconNode(
+      {config, libp2p, reqRespHandlers, metadata, peerRpcScores, logger, events, metrics, peersData},
       opts
     );
 
-    const attnetsService = new AttnetsService(config, clock, networkEventBus, metadata, logger, metrics, opts);
-    const syncnetsService = new SyncnetsService(config, clock, networkEventBus, metadata, logger, metrics, opts);
+    const reqResp = new ReqRespBeaconNodeFrontEnd(rawReqResp);
 
-    const gossip = new Eth2Gossipsub(opts, {
+    const attnetsService = new AttnetsService(config, clock, events, metadata, logger, metrics, opts);
+    const syncnetsService = new SyncnetsService(config, clock, events, metadata, logger, metrics, opts);
+
+    const rawGossip = new Eth2Gossipsub(opts, {
       config,
       libp2p,
       logger,
@@ -175,14 +181,16 @@ export class BaseNetwork implements IBaseNetwork {
       },
       peersData,
       attnetsService,
-      events: networkEventBus,
+      events,
     });
+
+    const gossip = new GossipPublisher({config, logger, publishGossip: rawGossip.publish.bind(rawGossip)});
 
     const peerManager = new PeerManager(
       {
         libp2p,
+        gossip: rawGossip,
         reqResp,
-        gossip,
         attnetsService,
         syncnetsService,
         logger,
@@ -190,7 +198,7 @@ export class BaseNetwork implements IBaseNetwork {
         clock,
         config,
         peerRpcScores,
-        networkEventBus,
+        events,
         peersData,
         statusCache,
       },
@@ -200,16 +208,16 @@ export class BaseNetwork implements IBaseNetwork {
     // Note: should not be necessary, already called in createNodeJsLibp2p()
     await libp2p.start();
 
-    await reqResp.start();
+    await rawReqResp.start();
 
-    await gossip.start();
+    await rawGossip.start();
     attnetsService.start();
     syncnetsService.start();
 
     // Network spec decides version changes based on clock fork, not head fork
     const forkCurrentSlot = config.getForkName(clock.currentSlot);
     // Register only ReqResp protocols relevant to clock's fork
-    reqResp.registerProtocolsAtFork(forkCurrentSlot);
+    rawReqResp.registerProtocolsAtFork(forkCurrentSlot);
 
     await peerManager.start();
 
@@ -222,7 +230,9 @@ export class BaseNetwork implements IBaseNetwork {
     return new BaseNetwork({
       libp2p,
       reqResp,
+      rawReqResp,
       gossip,
+      rawGossip,
       attnetsService,
       syncnetsService,
       peerManager,
@@ -247,10 +257,10 @@ export class BaseNetwork implements IBaseNetwork {
     // Must goodbye and disconnect before stopping libp2p
     await this.peerManager.goodbyeAndDisconnectAllPeers();
     await this.peerManager.stop();
-    await this.gossip.stop();
+    await this.rawGossip.stop();
 
-    await this.reqResp.stop();
-    await this.reqResp.unregisterAllProtocols();
+    await this.rawReqResp.stop();
+    await this.rawReqResp.unregisterAllProtocols();
 
     this.attnetsService.stop();
     this.syncnetsService.stop();
@@ -266,6 +276,12 @@ export class BaseNetwork implements IBaseNetwork {
   async updateStatus(status: phase0.Status): Promise<void> {
     this.statusCache.update(status);
   }
+  async reportPeer(peer: PeerId, action: PeerAction, actionName: string): Promise<void> {
+    this.peerManager.reportPeer(peer, action, actionName);
+  }
+  async reStatusPeers(peers: PeerId[]): Promise<void> {
+    this.peerManager.reStatusPeers(peers);
+  }
 
   /**
    * Request att subnets up `toSlot`. Network will ensure to mantain some peers for each
@@ -278,10 +294,6 @@ export class BaseNetwork implements IBaseNetwork {
   async prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void> {
     this.syncnetsService.addCommitteeSubscriptions(subscriptions);
     if (subscriptions.length > 0) this.peerManager.onCommitteeSubscriptions();
-  }
-
-  async publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult> {
-    return this.gossip.publish(topic, data, opts);
   }
 
   /**
@@ -370,7 +382,7 @@ export class BaseNetwork implements IBaseNetwork {
   }
 
   async dumpGossipPeerScoreStats(): Promise<PeerScoreStatsDump> {
-    return this.gossip.dumpPeerScoreStats();
+    return this.rawGossip.dumpPeerScoreStats();
   }
 
   async dumpDiscv5KadValues(): Promise<string[]> {
@@ -379,8 +391,8 @@ export class BaseNetwork implements IBaseNetwork {
 
   async dumpMeshPeers(): Promise<Record<string, string[]>> {
     const meshPeers: Record<string, string[]> = {};
-    for (const topic of this.gossip.getTopics()) {
-      meshPeers[topic] = this.gossip.getMeshPeers(topic);
+    for (const topic of this.rawGossip.getTopics()) {
+      meshPeers[topic] = this.rawGossip.getMeshPeers(topic);
     }
     return meshPeers;
   }
@@ -416,7 +428,7 @@ export class BaseNetwork implements IBaseNetwork {
           if (epoch === forkEpoch) {
             // updateEth2Field() MUST be called with clock epoch, onEpoch event is emitted in response to clock events
             this.metadata.updateEth2Field(epoch);
-            this.reqResp.registerProtocolsAtFork(nextFork);
+            this.rawReqResp.registerProtocolsAtFork(nextFork);
           }
 
           // After fork transition
@@ -454,7 +466,7 @@ export class BaseNetwork implements IBaseNetwork {
     const {subscribeAllSubnets} = this.opts;
 
     for (const topic of getCoreTopicsAtFork(fork, {subscribeAllSubnets})) {
-      this.gossip.subscribeTopic({...topic, fork});
+      this.rawGossip.subscribeTopic({...topic, fork});
     }
   }
 
@@ -464,7 +476,7 @@ export class BaseNetwork implements IBaseNetwork {
     const {subscribeAllSubnets} = this.opts;
 
     for (const topic of getCoreTopicsAtFork(fork, {subscribeAllSubnets})) {
-      this.gossip.unsubscribeTopic({...topic, fork});
+      this.rawGossip.unsubscribeTopic({...topic, fork});
     }
   }
 }

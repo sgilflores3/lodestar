@@ -7,33 +7,32 @@ import {BlockInput} from "../chain/blocks/types.js";
 import {RequestTypedContainer} from "./reqresp/ReqRespBeaconNode.js";
 import {PendingGossipsubMessage, ReqRespIncomingRequest, ReqRespOutgoingResponse} from "./processor/types.js";
 import {GossipTopic} from "./gossip/interface.js";
-import {PeerAction} from "./peers/index.js";
 
 export enum NetworkEvent {
   /** A relevant peer has connected or has been re-STATUS'd */
   peerConnected = "peer-manager.peer-connected",
+  /** A peer has been disconnected */
   peerDisconnected = "peer-manager.peer-disconnected",
-  gossipStart = "gossip.start",
-  gossipStop = "gossip.stop",
-  gossipHeartbeat = "gossipsub.heartbeat",
   reqRespRequest = "req-resp.request",
+  // TODO remove this event, this is not a network-level concern, rather a chain / sync concern
   unknownBlockParent = "unknownBlockParent",
 
-  // Network processor events
-  pendingGossipsubMessage = "gossip.pendingGossipsubMessage",
-  gossipMessageValidationResult = "gossip.messageValidationResult",
-  reqRespIncomingRequest = "reqResp.incomingRequest",
-  reqRespOutgoingResponse = "reqResp.outgoingResponse",
-
   // Gossip control events
+  /** (Network -> Network) A subscription should be attempted */
   subscribeTopic = "gossip.subscribeTopic",
+  /** (Network -> Network) An unsubscription should be attempted */
   unsubscribeTopic = "gossip.unsubscribeTopic",
 
-  // Peer manager events
-  reportPeer = "peerScore.reportPeer",
-  restatusPeers = "peerManager.restatusPeers",
-  /** Chain's head state has changed, and this is the new status */
-  localStatusUpdate = "peerManager.localStatusUpdate",
+  // Network processor events
+  /** (Network -> App) A gossip message is ready for validation */
+  pendingGossipsubMessage = "gossip.pendingGossipsubMessage",
+  /** (App -> Network) A gossip message has been validated */
+  gossipMessageValidationResult = "gossip.messageValidationResult",
+
+  /** (Network -> App) An inbound request has happened */
+  reqRespIncomingRequest = "reqResp.incomingRequest",
+  /** (App -> Network) A response should be sent to a peer */
+  reqRespOutgoingResponse = "reqResp.outgoingResponse",
 }
 
 export type NetworkEvents = {
@@ -51,9 +50,6 @@ export type NetworkEvents = {
   [NetworkEvent.reqRespOutgoingResponse]: (data: ReqRespOutgoingResponse) => void;
   [NetworkEvent.subscribeTopic]: (topic: GossipTopic) => void;
   [NetworkEvent.unsubscribeTopic]: (topic: GossipTopic) => void;
-  [NetworkEvent.reportPeer]: (peer: PeerId, action: PeerAction, actionName: string) => void;
-  [NetworkEvent.restatusPeers]: (peers: PeerId[]) => void;
-  [NetworkEvent.localStatusUpdate]: (localStatus: phase0.Status) => void;
 };
 
 export type INetworkEventBus = StrictEventEmitter<EventEmitter, NetworkEvents>;

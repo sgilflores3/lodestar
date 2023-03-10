@@ -9,7 +9,6 @@ import {LocalClock} from "../../chain/clock/LocalClock.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {getReqRespHandlersEventBased} from "../reqresp/utils/handlerToEvents.js";
-import {CommitteeSubscription} from "../subnets/interface.js";
 import {NetworkWorkerApi, NetworkWorkerData} from "./types.js";
 import {BaseNetwork} from "./baseNetwork.js";
 
@@ -49,8 +48,8 @@ const baseNetwork = await BaseNetwork.init({
   metricsRegistry: metricsRegister,
   reqRespHandlers,
   activeValidatorCount: workerData.activeValidatorCount,
-  networkEventBus,
-  initialStatus,
+  events: networkEventBus,
+  initialStatus: workerData.initialStatus,
 });
 
 const pendingGossipsubMessageSubject = new Subject<PendingGossipsubMessage>();
@@ -69,30 +68,32 @@ const libp2pWorkerApi: NetworkWorkerApi = {
   updateStatus: (status) => baseNetwork.updateStatus(status),
 
   publishGossip(topic, data, opts) {
-    return baseNetwork.gossip.publish(topic, data, opts);
+    return baseNetwork.rawGossip.publish(topic, data, opts);
   },
   pendingGossipsubMessage: () => Observable.from(pendingGossipsubMessageSubject),
 
-  // TODO: Should this just be events? Do they need to report errors back?
-  prepareBeaconCommitteeSubnets: (subscriptions: CommitteeSubscription[]) =>
-    baseNetwork.prepareBeaconCommitteeSubnets(subscriptions),
-  prepareSyncCommitteeSubnets: (subscriptions: CommitteeSubscription[]) =>
-    baseNetwork.prepareSyncCommitteeSubnets(subscriptions),
+  prepareBeaconCommitteeSubnets: (subscriptions) => baseNetwork.prepareBeaconCommitteeSubnets(subscriptions),
+  prepareSyncCommitteeSubnets: (subscriptions) => baseNetwork.prepareSyncCommitteeSubnets(subscriptions),
+  reportPeer: (peer, action, actionName) => baseNetwork.reportPeer(peer, action, actionName),
+  reStatusPeers: (peers) => baseNetwork.reStatusPeers(peers),
   subscribeGossipCoreTopics: () => baseNetwork.subscribeGossipCoreTopics(),
   unsubscribeGossipCoreTopics: () => baseNetwork.unsubscribeGossipCoreTopics(),
-  isSubscribedToGossipCoreTopics: () => baseNetwork.isSubscribedToGossipCoreTopics(),
 
   // ReqResp outgoing requests
 
+  ping: (peerId) => baseNetwork.rawReqResp.ping(peerId),
+  goodbye: (peerId, request) => baseNetwork.rawReqResp.goodbye(peerId, request),
+  metadata: (peerId) => baseNetwork.rawReqResp.metadata(peerId),
+  status: (peerId, request) => baseNetwork.rawReqResp.status(peerId, request),
   beaconBlockAndBlobsSidecarByRoot: (peerId, request) =>
-    baseNetwork.reqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
-  beaconBlocksByRange: (peerId, request) => baseNetwork.reqResp.beaconBlocksByRange(peerId, request),
-  beaconBlocksByRoot: (peerId, request) => baseNetwork.reqResp.beaconBlocksByRoot(peerId, request),
-  blobsSidecarsByRange: (peerId, request) => baseNetwork.reqResp.blobsSidecarsByRange(peerId, request),
-  lightClientBootstrap: (peerId, request) => baseNetwork.reqResp.lightClientBootstrap(peerId, request),
-  lightClientFinalityUpdate: (peerId) => baseNetwork.reqResp.lightClientFinalityUpdate(peerId),
-  lightClientOptimisticUpdate: (peerId) => baseNetwork.reqResp.lightClientOptimisticUpdate(peerId),
-  lightClientUpdatesByRange: (peerId, request) => baseNetwork.reqResp.lightClientUpdatesByRange(peerId, request),
+    baseNetwork.rawReqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
+  beaconBlocksByRange: (peerId, request) => baseNetwork.rawReqResp.beaconBlocksByRange(peerId, request),
+  beaconBlocksByRoot: (peerId, request) => baseNetwork.rawReqResp.beaconBlocksByRoot(peerId, request),
+  blobsSidecarsByRange: (peerId, request) => baseNetwork.rawReqResp.blobsSidecarsByRange(peerId, request),
+  lightClientBootstrap: (peerId, request) => baseNetwork.rawReqResp.lightClientBootstrap(peerId, request),
+  lightClientFinalityUpdate: (peerId) => baseNetwork.rawReqResp.lightClientFinalityUpdate(peerId),
+  lightClientOptimisticUpdate: (peerId) => baseNetwork.rawReqResp.lightClientOptimisticUpdate(peerId),
+  lightClientUpdatesByRange: (peerId, request) => baseNetwork.rawReqResp.lightClientUpdatesByRange(peerId, request),
 
   // Debug
 
