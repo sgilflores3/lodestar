@@ -12,7 +12,7 @@ export interface NetworkOptions
     Omit<ReqRespBeaconNodeOpts, "getPeerLogMetadata" | "onRateLimit">,
     NetworkProcessorOpts,
     Eth2GossipsubOpts {
-  localMultiaddrs: string[];
+  bindAddr: string;
   bootMultiaddrs?: string[];
   subscribeAllSubnets?: boolean;
   mdns: boolean;
@@ -33,7 +33,7 @@ export const defaultNetworkOptions: NetworkOptions = {
   maxPeers: 55, // Allow some room above targetPeers for new inbound peers
   targetPeers: 50,
   discv5FirstQueryDelayMs: 1000,
-  localMultiaddrs: ["/ip4/0.0.0.0/tcp/9000"],
+  bindAddr: "/ip4/0.0.0.0/tcp/9000",
   bootMultiaddrs: [],
   mdns: false,
   discv5: defaultDiscv5Options,

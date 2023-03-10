@@ -15,8 +15,13 @@ import {PeerScoreStats} from "../peers/index.js";
 import {NetworkOptions} from "../options.js";
 import {NetworkWorkerApi, NetworkWorkerData, NetworkCore} from "./types.js";
 
+export type WorkerNetworkCoreOpts = NetworkOptions & {
+  metrics: boolean;
+  peerStoreDir: string;
+};
+
 export type Libp2pkWorkerWrapperInitModules = {
-  opts: NetworkOptions;
+  opts: WorkerNetworkCoreOpts;
   config: BeaconConfig;
   genesisTime: number;
   activeValidatorCount: number;
@@ -51,11 +56,12 @@ export class WorkerNetworkCore implements NetworkCore {
 
     const worker = new Worker("./worker.js", {workerData} as ConstructorParameters<typeof Worker>[1]);
 
-    const workerApi = await spawn<NetworkWorkerApi>(worker, {
+    const workerApi = ((await spawn<any>(worker, {
       // A Lodestar Node may do very expensive task at start blocking the event loop and causing
       // the initialization to timeout. The number below is big enough to almost disable the timeout
       timeout: 5 * 60 * 1000,
-    });
+      // TODO: types are broken on spawn, which claims that `NetworkWorkerApi` does not satifies its contrains
+    })) as unknown) as NetworkWorkerApi;
 
     workerApi.pendingGossipsubMessage().subscribe((data) => events.emit(NetworkEvent.pendingGossipsubMessage, data));
 
@@ -78,8 +84,12 @@ export class WorkerNetworkCore implements NetworkCore {
     return this.getApi().scrapeMetrics();
   }
 
-  publishGossipObject(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult> {
-    return this.getApi().publishGossipObject(topic, data, opts);
+  updateStatus(status: phase0.Status): Promise<void> {
+    return this.getApi().updateStatus(status);
+  }
+
+  publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult> {
+    return this.getApi().publishGossip(topic, data, opts);
   }
 
   // TODO: Should this just be events? Do they need to report errors back?

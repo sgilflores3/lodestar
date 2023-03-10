@@ -34,7 +34,7 @@ export interface IBaseNetwork {
   publishGossip(topic: string, data: Uint8Array, opts?: PublishOpts): Promise<PublishResult>;
   subscribeGossipCoreTopics(): Promise<void>;
   unsubscribeGossipCoreTopics(): Promise<void>;
-  isSubscribedToGossipCoreTopics(): Promise<boolean>;
+  // isSubscribedToGossipCoreTopics(): Promise<boolean>;
 
   // Debug
   connectToPeer(peer: PeerId, multiaddr: Multiaddr[]): Promise<void>;
