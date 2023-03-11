@@ -161,7 +161,7 @@ export class Network implements INetwork {
       });
     }
 
-    const multiaddresses = opts.bootMultiaddrs?.join(",");
+    const multiaddresses = opts.localMultiaddrs?.join(",");
     logger.info(`PeerId ${peerId.toString()}, Multiaddrs ${multiaddresses}`);
 
     return new Network({

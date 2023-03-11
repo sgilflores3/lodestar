@@ -556,7 +556,7 @@ export function getValidatorApi({
               indexedAttestation.attestingIndices.length,
               committeeIndices
             );
-            const response = await network.publishBeaconAggregateAndProof(signedAggregateAndProof);
+            const response = await network.gossip.publishBeaconAggregateAndProof(signedAggregateAndProof);
             metrics?.submitAggregatedAttestation(seenTimestampSec, indexedAttestation, response.recipients.length);
           } catch (e) {
             if (e instanceof AttestationError && e.type.code === AttestationErrorCode.AGGREGATOR_ALREADY_KNOWN) {
@@ -612,7 +612,7 @@ export function getValidatorApi({
               contributionAndProof.message,
               syncCommitteeParticipantIndices.length
             );
-            await network.publishContributionAndProof(contributionAndProof);
+            await network.gossip.publishContributionAndProof(contributionAndProof);
           } catch (e) {
             errors.push(e as Error);
             logger.error(
