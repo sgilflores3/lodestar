@@ -13,10 +13,6 @@ export function createBeaconMetrics(register: RegistryMetricCreator) {
     // From https://github.com/ethereum/beacon-metrics/blob/master/metrics.md
     // Interop-metrics
 
-    peers: register.gauge({
-      name: "libp2p_peers",
-      help: "number of connected peers",
-    }),
     headSlot: register.gauge({
       name: "beacon_head_slot",
       help: "slot of the head block of the beacon chain",
