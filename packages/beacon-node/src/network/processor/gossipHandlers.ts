@@ -35,6 +35,7 @@ import {validateLightClientFinalityUpdate} from "../../chain/validation/lightCli
 import {validateLightClientOptimisticUpdate} from "../../chain/validation/lightClientOptimisticUpdate.js";
 import {validateGossipBlobsSidecar} from "../../chain/validation/blobsSidecar.js";
 import {BlockInput, getBlockInput} from "../../chain/blocks/types.js";
+import {INetworkCore} from "../core/index.js";
 
 /**
  * Gossip handler options as part of network options
@@ -57,6 +58,7 @@ export type ValidatorFnsModules = {
   logger: Logger;
   metrics: Metrics | null;
   events: NetworkEventBus;
+  core: INetworkCore;
 };
 
 const MAX_UNKNOWN_BLOCK_ROOT_RETRIES = 1;
@@ -76,7 +78,7 @@ const MAX_UNKNOWN_BLOCK_ROOT_RETRIES = 1;
  * - Ethereum Consensus gossipsub protocol strictly defined a single topic for message
  */
 export function getGossipHandlers(modules: ValidatorFnsModules, options: GossipHandlerOpts): GossipHandlers {
-  const {chain, config, metrics, events, logger} = modules;
+  const {chain, config, metrics, events, logger, core} = modules;
 
   async function validateBeaconBlock(
     blockInput: BlockInput,
@@ -156,12 +158,7 @@ export function getGossipHandlers(modules: ValidatorFnsModules, options: GossipH
               break;
             default:
               // TODO: Should it use PeerId or string?
-              events.emit(
-                NetworkEvent.reportPeer,
-                peerIdFromString(peerIdStr),
-                PeerAction.LowToleranceError,
-                "BadGossipBlock"
-              );
+              core.reportPeer(peerIdFromString(peerIdStr), PeerAction.LowToleranceError, "BadGossipBlock");
           }
         }
         logger.error("Error receiving block", {slot: signedBlock.message.slot, peer: peerIdStr}, e as Error);

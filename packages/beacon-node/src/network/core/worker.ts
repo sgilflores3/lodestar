@@ -107,6 +107,7 @@ const libp2pWorkerApi: NetworkWorkerApi = {
   dumpGossipPeerScoreStats: () => core.dumpGossipPeerScoreStats(),
   dumpDiscv5KadValues: () => core.dumpDiscv5KadValues(),
   dumpMeshPeers: () => core.dumpMeshPeers(),
+  dumpENR: () => core.dumpENR(),
 };
 
 expose(libp2pWorkerApi as WorkerModule<keyof NetworkWorkerApi>);

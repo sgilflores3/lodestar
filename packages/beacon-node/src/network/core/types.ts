@@ -26,7 +26,7 @@ export interface IBaseNetwork {
   /** Subscribe, search peers, join long-lived syncnets */
   prepareSyncCommitteeSubnets(subscriptions: CommitteeSubscription[]): Promise<void>;
   reStatusPeers(peers: PeerId[]): Promise<void>;
-  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void;
+  reportPeer(peer: PeerId, action: PeerAction, actionName: string): Promise<void>;
 
   // REST API getters
   getConnectedPeers(): Promise<PeerId[]>;
@@ -47,6 +47,7 @@ export interface IBaseNetwork {
   dumpGossipPeerScoreStats(): Promise<PeerScoreStatsDump>;
   dumpDiscv5KadValues(): Promise<string[]>;
   dumpMeshPeers(): Promise<Record<string, string[]>>;
+  dumpENR(): Promise<string | undefined>;
 }
 
 /**
@@ -71,7 +72,7 @@ export type NetworkWorkerData = {
   activeValidatorCount: number;
   initialStatus: phase0.Status;
   peerIdProto: Uint8Array;
-  bindAddr: string;
+  localMultiaddrs: string[];
   metrics: boolean;
   peerStoreDir?: string;
 };

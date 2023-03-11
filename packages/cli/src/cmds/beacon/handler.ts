@@ -83,10 +83,10 @@ export async function beaconHandler(args: BeaconArgs & GlobalArgs): Promise<void
 
     onGracefulShutdown(async () => {
       if (args.persistNetworkIdentity) {
-        const enr = await node.network.getEnr().catch((e) => logger.warn("Unable to persist enr", {}, e));
-        if (enr) {
+        const enrStr = await node.network.dumpENR().catch((e) => logger.warn("Unable to persist enr", {}, e));
+        if (enrStr) {
           const enrPath = path.join(beaconPaths.beaconDir, "enr");
-          writeFile600Perm(enrPath, enr.encodeTxt());
+          writeFile600Perm(enrPath, enrStr);
         }
       }
       abortController.abort();

@@ -397,6 +397,10 @@ export class NetworkCore implements INetworkCore {
     return meshPeers;
   }
 
+  async dumpENR(): Promise<string | undefined> {
+    return (await this.peerManager["discovery"]?.discv5.enr())?.encodeTxt();
+  }
+
   /**
    * Handle subscriptions through fork transitions, @see FORK_EPOCH_LOOKAHEAD
    */

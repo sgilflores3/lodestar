@@ -164,9 +164,12 @@ export class ReqRespByEventsMain {
   private async onIncomingRequest(data: ReqRespIncomingRequest): Promise<void> {
     try {
       // TODO TEMP: figure out types here more safely
+      // TODO this is probably completely wrong
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const handler: ReqRespHandler<unknown, EncodedPayloadBytesOutgoing> | undefined = this.handlers[
         data.payload.method as keyof ReqRespHandlers
-      ];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any;
       if (handler === undefined) {
         throw Error(`Unknown reqresp method ${data.payload.method}`);
       }

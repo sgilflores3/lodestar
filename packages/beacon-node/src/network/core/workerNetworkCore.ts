@@ -58,14 +58,14 @@ export class WorkerNetworkCore implements INetworkCore {
 
   static async init(modules: WorkerNetworkCoreInitModules): Promise<WorkerNetworkCore> {
     const {opts, config, peerId, events} = modules;
-    const {genesisTime, peerStoreDir, activeValidatorCount, bindAddr, metrics, initialStatus} = opts;
+    const {genesisTime, peerStoreDir, activeValidatorCount, localMultiaddrs, metrics, initialStatus} = opts;
 
     const workerData: NetworkWorkerData = {
       opts,
       chainConfigJson: chainConfigToJson(config),
       genesisValidatorsRoot: config.genesisValidatorsRoot,
       peerIdProto: exportToProtobuf(peerId),
-      bindAddr,
+      localMultiaddrs,
       metrics,
       peerStoreDir,
       genesisTime,
@@ -112,7 +112,7 @@ export class WorkerNetworkCore implements INetworkCore {
     return this.getApi().reStatusPeers(peers);
   }
 
-  reportPeer(peer: PeerId, action: PeerAction, actionName: string): void {
+  reportPeer(peer: PeerId, action: PeerAction, actionName: string): Promise<void> {
     return this.getApi().reportPeer(peer, action, actionName);
   }
 
@@ -213,6 +213,9 @@ export class WorkerNetworkCore implements INetworkCore {
   }
   dumpMeshPeers(): Promise<Record<string, string[]>> {
     return this.getApi().dumpMeshPeers();
+  }
+  dumpENR(): Promise<string | undefined> {
+    return this.getApi().dumpENR();
   }
 
   private getApi(): NetworkWorkerApi {

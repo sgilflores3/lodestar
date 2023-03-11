@@ -121,8 +121,6 @@ export class Network implements INetwork {
   }: NetworkInitModules): Promise<Network> {
     const events = new NetworkEventBus();
 
-    const networkProcessor = new NetworkProcessor({chain, db, config, logger, metrics, events, gossipHandlers}, opts);
-
     let core: INetworkCore;
     const activeValidatorCount = chain.getHeadState().epochCtx.currentShuffling.activeIndices.length;
     const initialStatus = chain.getStatus();
@@ -160,6 +158,11 @@ export class Network implements INetwork {
         events,
       });
     }
+
+    const networkProcessor = new NetworkProcessor(
+      {chain, db, config, logger, metrics, events, gossipHandlers, core},
+      opts
+    );
 
     const multiaddresses = opts.localMultiaddrs?.join(",");
     logger.info(`PeerId ${peerId.toString()}, Multiaddrs ${multiaddresses}`);
@@ -303,6 +306,10 @@ export class Network implements INetwork {
 
   dumpMeshPeers(): Promise<Record<string, string[]>> {
     return this.core.dumpMeshPeers();
+  }
+
+  dumpENR(): Promise<string | undefined> {
+    return this.core.dumpENR();
   }
 
   async dumpGossipQueue(gossipType: GossipType): Promise<PendingGossipsubMessage[]> {
