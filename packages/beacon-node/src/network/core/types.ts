@@ -54,7 +54,7 @@ export interface IBaseNetwork {
  *
  * All properties/methods should be async to allow for a worker implementation
  */
-export interface NetworkCore extends IBaseNetwork {
+export interface INetworkCore extends IBaseNetwork {
   gossip: PublisherBeaconNode;
   reqResp: IReqRespBeaconNode;
 }

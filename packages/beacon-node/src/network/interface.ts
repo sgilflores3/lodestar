@@ -6,20 +6,20 @@ import {ConnectionManager} from "@libp2p/interface-connection-manager";
 import {phase0} from "@lodestar/types";
 import {BlockInput} from "../chain/blocks/types.js";
 import {INetworkEventBus} from "./events.js";
-import {NetworkCore} from "./core/types.js";
+import {INetworkCore} from "./core/types.js";
 import {GossipType} from "./gossip/interface.js";
 import {PendingGossipsubMessage} from "./processor/types.js";
 
 /**
  * The architecture of the network looks like so:
  * - core:
- *   - BaseNetwork - This _implementation_ contains all libp2p and dependent modules
- *   - NetworkCore - This interface encapsulates all functionality from BaseNetwork, its meant to act as an wrapper that makes multiple implementations more simple
- *     - We provide both a MainThreadNetworkCore and a WorkerNetworkCore implementation
- * - INetwork - This interface extends NetworkCore and crucially allows for a connection to the BeaconChain module.
+ *   - INetworkCore - This interface encapsulates all functionality from BaseNetwork, its meant to act as an wrapper that makes multiple implementations more simple
+ *   - NetworkCore - This _implementation_ contains all libp2p and dependent modules
+ *   - WorkerNetworkCore - This _implementation_ wraps a NetworkCore in a Worker thread
+ * - INetwork - This interface extends INetworkCore and crucially allows for a connection to the BeaconChain module.
  */
 
-export interface INetwork extends Omit<NetworkCore, "updateStatus" | "getConnectedPeers" | "getConnectedPeerCount"> {
+export interface INetwork extends Omit<INetworkCore, "updateStatus" | "getConnectedPeers" | "getConnectedPeerCount"> {
   /** Our network identity */
   peerId: PeerId;
   events: INetworkEventBus;

@@ -21,10 +21,8 @@ import {PeerAction, PeerScoreStats} from "./peers/index.js";
 import {INetworkEventBus, NetworkEvent, NetworkEventBus} from "./events.js";
 import {CommitteeSubscription} from "./subnets/index.js";
 import {isPublishToZeroPeersError} from "./util.js";
-import {NetworkProcessor} from "./processor/index.js";
-import {PendingGossipsubMessage} from "./processor/types.js";
-import {NetworkCore, WorkerNetworkCore} from "./core/index.js";
-import {BaseNetwork} from "./core/baseNetwork.js";
+import {NetworkProcessor, PendingGossipsubMessage} from "./processor/index.js";
+import {INetworkCore, NetworkCore, WorkerNetworkCore} from "./core/index.js";
 
 type NetworkModules = {
   opts: NetworkOptions;
@@ -35,7 +33,7 @@ type NetworkModules = {
   signal: AbortSignal;
   networkEventBus: NetworkEventBus;
   networkProcessor: NetworkProcessor;
-  core: NetworkCore;
+  core: INetworkCore;
 };
 
 export type NetworkInitModules = {
@@ -76,7 +74,7 @@ export class Network implements INetwork {
 
   // TODO: Review
   private readonly networkProcessor: NetworkProcessor;
-  private readonly core: NetworkCore;
+  private readonly core: INetworkCore;
 
   private subscribedToCoreTopics = false;
   private connectedPeers = new PeerSet();
@@ -121,7 +119,7 @@ export class Network implements INetwork {
 
     const networkProcessor = new NetworkProcessor({chain, db, config, logger, metrics, events, gossipHandlers}, opts);
 
-    let core: NetworkCore;
+    let core: INetworkCore;
     const activeValidatorCount = chain.getHeadState().epochCtx.currentShuffling.activeIndices.length;
     const initialStatus = chain.getStatus();
     // eslint-disable-next-line no-constant-condition
@@ -129,7 +127,7 @@ export class Network implements INetwork {
       const metricsRegistry = metrics ? new RegistryMetricCreator() : null;
       const clock = chain.clock as LocalClock;
 
-      core = await BaseNetwork.init({
+      core = await NetworkCore.init({
         opts,
         config,
         peerId,

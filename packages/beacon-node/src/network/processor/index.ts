@@ -11,6 +11,8 @@ import {NetworkWorker, NetworkWorkerModules} from "./worker.js";
 import {PendingGossipsubMessage} from "./types.js";
 import {ValidatorFnsModules, GossipHandlerOpts} from "./gossipHandlers.js";
 
+export * from "./types.js";
+
 export type NetworkProcessorModules = NetworkWorkerModules &
   ValidatorFnsModules & {
     chain: IBeaconChain;

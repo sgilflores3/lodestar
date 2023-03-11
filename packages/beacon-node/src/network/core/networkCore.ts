@@ -29,7 +29,7 @@ import {Discv5Worker} from "../discv5/index.js";
 import {LocalStatusCache} from "../status.js";
 import {RegistryMetricCreator} from "../../metrics/index.js";
 import {BaseNetworkMetrics, createBaseNetworkMetrics} from "./metrics.js";
-import {NetworkCore} from "./types.js";
+import {INetworkCore} from "./types.js";
 
 type Mods = {
   libp2p: Libp2p;
@@ -80,7 +80,7 @@ export type BaseNetworkInit = {
  * - PeerManager
  * - NetworkProcessor: Must be in the main thread, depends on chain
  */
-export class BaseNetwork implements NetworkCore {
+export class NetworkCore implements INetworkCore {
   readonly rawGossip: Eth2Gossipsub;
   readonly gossip: GossipPublisher;
   readonly rawReqResp: ReqRespBeaconNode;
@@ -138,7 +138,7 @@ export class BaseNetwork implements NetworkCore {
     clock,
     activeValidatorCount,
     initialStatus,
-  }: BaseNetworkInit): Promise<BaseNetwork> {
+  }: BaseNetworkInit): Promise<NetworkCore> {
     const libp2p = await createNodeJsLibp2p(peerId, opts, {
       peerStoreDir,
       metrics: Boolean(metricsRegistry),
@@ -227,7 +227,7 @@ export class BaseNetwork implements NetworkCore {
     // Initialize ENR with clock's fork
     metadata.upstreamValues(clock.currentEpoch);
 
-    return new BaseNetwork({
+    return new NetworkCore({
       libp2p,
       reqResp,
       rawReqResp,

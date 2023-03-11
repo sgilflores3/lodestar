@@ -10,7 +10,7 @@ import {NetworkEvent, NetworkEventBus} from "../events.js";
 import {PendingGossipsubMessage} from "../processor/types.js";
 import {getReqRespHandlersEventBased} from "../reqresp/utils/handlerToEvents.js";
 import {NetworkWorkerApi, NetworkWorkerData} from "./types.js";
-import {BaseNetwork} from "./baseNetwork.js";
+import {NetworkCore} from "./networkCore.js";
 
 // Cloned data from instatiation
 const workerData = worker.workerData as NetworkWorkerData;
@@ -28,7 +28,7 @@ const abortController = new AbortController();
 // Set up metrics, nodejs and discv5-specific
 const metricsRegister = workerData.metrics ? new RegistryMetricCreator() : null;
 if (metricsRegister) {
-  collectNodeJSMetrics(metricsRegister, "libp2p_worker_");
+  collectNodeJSMetrics(metricsRegister, "network_worker_");
 }
 
 // Main event bus shared across the stack
@@ -38,7 +38,7 @@ const clock = new LocalClock({config, genesisTime: workerData.genesisTime, signa
 // ReqResp handles that transform internal async iterable into events
 const reqRespHandlers = getReqRespHandlersEventBased(events);
 
-const baseNetwork = await BaseNetwork.init({
+const core = await NetworkCore.init({
   opts: workerData.opts,
   config,
   peerId,
@@ -59,55 +59,53 @@ events.on(NetworkEvent.pendingGossipsubMessage, (data) => {
 });
 
 const libp2pWorkerApi: NetworkWorkerApi = {
-  close() {
+  close: () => {
     abortController.abort();
-    return baseNetwork.close();
+    return core.close();
   },
-  scrapeMetrics: () => baseNetwork.scrapeMetrics(),
+  scrapeMetrics: () => core.scrapeMetrics(),
 
-  updateStatus: (status) => baseNetwork.updateStatus(status),
+  updateStatus: (status) => core.updateStatus(status),
 
-  publishGossip(topic, data, opts) {
-    return baseNetwork.rawGossip.publish(topic, data, opts);
-  },
+  publishGossip: (topic, data, opts) => core.rawGossip.publish(topic, data, opts),
   pendingGossipsubMessage: () => Observable.from(pendingGossipsubMessageSubject),
 
-  prepareBeaconCommitteeSubnets: (subscriptions) => baseNetwork.prepareBeaconCommitteeSubnets(subscriptions),
-  prepareSyncCommitteeSubnets: (subscriptions) => baseNetwork.prepareSyncCommitteeSubnets(subscriptions),
-  reportPeer: (peer, action, actionName) => baseNetwork.reportPeer(peer, action, actionName),
-  reStatusPeers: (peers) => baseNetwork.reStatusPeers(peers),
-  subscribeGossipCoreTopics: () => baseNetwork.subscribeGossipCoreTopics(),
-  unsubscribeGossipCoreTopics: () => baseNetwork.unsubscribeGossipCoreTopics(),
+  prepareBeaconCommitteeSubnets: (subscriptions) => core.prepareBeaconCommitteeSubnets(subscriptions),
+  prepareSyncCommitteeSubnets: (subscriptions) => core.prepareSyncCommitteeSubnets(subscriptions),
+  reportPeer: (peer, action, actionName) => core.reportPeer(peer, action, actionName),
+  reStatusPeers: (peers) => core.reStatusPeers(peers),
+  subscribeGossipCoreTopics: () => core.subscribeGossipCoreTopics(),
+  unsubscribeGossipCoreTopics: () => core.unsubscribeGossipCoreTopics(),
 
   // ReqResp outgoing requests
 
-  ping: (peerId) => baseNetwork.rawReqResp.ping(peerId),
-  goodbye: (peerId, request) => baseNetwork.rawReqResp.goodbye(peerId, request),
-  metadata: (peerId) => baseNetwork.rawReqResp.metadata(peerId),
-  status: (peerId, request) => baseNetwork.rawReqResp.status(peerId, request),
+  ping: (peerId) => core.rawReqResp.ping(peerId),
+  goodbye: (peerId, request) => core.rawReqResp.goodbye(peerId, request),
+  metadata: (peerId) => core.rawReqResp.metadata(peerId),
+  status: (peerId, request) => core.rawReqResp.status(peerId, request),
   beaconBlockAndBlobsSidecarByRoot: (peerId, request) =>
-    baseNetwork.rawReqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
-  beaconBlocksByRange: (peerId, request) => baseNetwork.rawReqResp.beaconBlocksByRange(peerId, request),
-  beaconBlocksByRoot: (peerId, request) => baseNetwork.rawReqResp.beaconBlocksByRoot(peerId, request),
-  blobsSidecarsByRange: (peerId, request) => baseNetwork.rawReqResp.blobsSidecarsByRange(peerId, request),
-  lightClientBootstrap: (peerId, request) => baseNetwork.rawReqResp.lightClientBootstrap(peerId, request),
-  lightClientFinalityUpdate: (peerId) => baseNetwork.rawReqResp.lightClientFinalityUpdate(peerId),
-  lightClientOptimisticUpdate: (peerId) => baseNetwork.rawReqResp.lightClientOptimisticUpdate(peerId),
-  lightClientUpdatesByRange: (peerId, request) => baseNetwork.rawReqResp.lightClientUpdatesByRange(peerId, request),
+    core.rawReqResp.beaconBlockAndBlobsSidecarByRoot(peerId, request),
+  beaconBlocksByRange: (peerId, request) => core.rawReqResp.beaconBlocksByRange(peerId, request),
+  beaconBlocksByRoot: (peerId, request) => core.rawReqResp.beaconBlocksByRoot(peerId, request),
+  blobsSidecarsByRange: (peerId, request) => core.rawReqResp.blobsSidecarsByRange(peerId, request),
+  lightClientBootstrap: (peerId, request) => core.rawReqResp.lightClientBootstrap(peerId, request),
+  lightClientFinalityUpdate: (peerId) => core.rawReqResp.lightClientFinalityUpdate(peerId),
+  lightClientOptimisticUpdate: (peerId) => core.rawReqResp.lightClientOptimisticUpdate(peerId),
+  lightClientUpdatesByRange: (peerId, request) => core.rawReqResp.lightClientUpdatesByRange(peerId, request),
 
   // Debug
 
-  getNetworkIdentity: () => baseNetwork.getNetworkIdentity(),
-  getConnectedPeers: () => baseNetwork.getConnectedPeers(),
-  getConnectedPeerCount: () => baseNetwork.getConnectedPeerCount(),
-  connectToPeer: (peer, multiaddr) => baseNetwork.connectToPeer(peer, multiaddr),
-  disconnectPeer: (peer) => baseNetwork.disconnectPeer(peer),
-  dumpPeers: () => baseNetwork.dumpPeers(),
-  dumpPeer: (peerIdStr) => baseNetwork.dumpPeer(peerIdStr),
-  dumpPeerScoreStats: () => baseNetwork.dumpPeerScoreStats(),
-  dumpGossipPeerScoreStats: () => baseNetwork.dumpGossipPeerScoreStats(),
-  dumpDiscv5KadValues: () => baseNetwork.dumpDiscv5KadValues(),
-  dumpMeshPeers: () => baseNetwork.dumpMeshPeers(),
+  getNetworkIdentity: () => core.getNetworkIdentity(),
+  getConnectedPeers: () => core.getConnectedPeers(),
+  getConnectedPeerCount: () => core.getConnectedPeerCount(),
+  connectToPeer: (peer, multiaddr) => core.connectToPeer(peer, multiaddr),
+  disconnectPeer: (peer) => core.disconnectPeer(peer),
+  dumpPeers: () => core.dumpPeers(),
+  dumpPeer: (peerIdStr) => core.dumpPeer(peerIdStr),
+  dumpPeerScoreStats: () => core.dumpPeerScoreStats(),
+  dumpGossipPeerScoreStats: () => core.dumpGossipPeerScoreStats(),
+  dumpDiscv5KadValues: () => core.dumpDiscv5KadValues(),
+  dumpMeshPeers: () => core.dumpMeshPeers(),
 };
 
 expose(libp2pWorkerApi);

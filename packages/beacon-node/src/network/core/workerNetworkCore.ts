@@ -18,7 +18,7 @@ import {IReqRespBeaconNode} from "../reqresp/interface.js";
 import {PublisherBeaconNode} from "../gossip/interface.js";
 import {ReqRespBeaconNodeFrontEnd} from "../reqresp/ReqRespBeaconNode.js";
 import {GossipPublisher} from "../gossip/publisher.js";
-import {NetworkWorkerApi, NetworkWorkerData, NetworkCore} from "./types.js";
+import {NetworkWorkerApi, NetworkWorkerData, INetworkCore} from "./types.js";
 
 export type WorkerNetworkCoreOpts = NetworkOptions & {
   metrics: boolean;
@@ -43,7 +43,7 @@ type WorkerNetworkCoreModules = WorkerNetworkCoreInitModules & {
 /**
  * NetworkCore implementation using a Worker thread
  */
-export class WorkerNetworkCore implements NetworkCore {
+export class WorkerNetworkCore implements INetworkCore {
   readonly reqResp: IReqRespBeaconNode;
   readonly gossip: PublisherBeaconNode;
 
