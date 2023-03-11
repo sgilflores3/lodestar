@@ -4,6 +4,7 @@ import {expose} from "@chainsafe/threads/worker";
 import {Observable, Subject} from "@chainsafe/threads/observable";
 import {chainConfigFromJson, createBeaconConfig} from "@lodestar/config";
 import {createWinstonLogger} from "@lodestar/utils";
+import type {WorkerModule} from "@chainsafe/threads/dist/types/worker.js";
 import {collectNodeJSMetrics, RegistryMetricCreator} from "../../metrics/index.js";
 import {LocalClock} from "../../chain/clock/LocalClock.js";
 import {NetworkEvent, NetworkEventBus} from "../events.js";
@@ -108,4 +109,4 @@ const libp2pWorkerApi: NetworkWorkerApi = {
   dumpMeshPeers: () => core.dumpMeshPeers(),
 };
 
-expose(libp2pWorkerApi);
+expose(libp2pWorkerApi as WorkerModule<keyof NetworkWorkerApi>);

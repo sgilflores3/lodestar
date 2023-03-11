@@ -14,8 +14,12 @@ import {LocalClock} from "../chain/clock/LocalClock.js";
 import {PeerSet} from "../util/peerMap.js";
 import {NetworkOptions} from "./options.js";
 import {INetwork} from "./interface.js";
-import {ReqRespHandlers, beaconBlocksMaybeBlobsByRange, IReqRespBeaconNode} from "./reqresp/index.js";
-import {beaconBlocksMaybeBlobsByRoot} from "./reqresp/beaconBlocksMaybeBlobsByRoot.js";
+import {
+  beaconBlocksMaybeBlobsByRange,
+  beaconBlocksMaybeBlobsByRoot,
+  ReqRespHandlers,
+  IReqRespBeaconNode,
+} from "./reqresp/index.js";
 import {GossipHandlers, GossipType, PublisherBeaconNode} from "./gossip/index.js";
 import {PeerAction, PeerScoreStats} from "./peers/index.js";
 import {INetworkEventBus, NetworkEvent, NetworkEventBus} from "./events.js";
@@ -187,9 +191,6 @@ export class Network implements INetwork {
   }
 
   async scrapeMetrics(): Promise<string> {
-    // TODO: Pick from discv5 worker too
-    // const discv5 = this.peerManager["discovery"]?.discv5;
-    // return (await this.discv5?.metrics()) ?? "";
     return this.core.scrapeMetrics();
   }
 
@@ -197,12 +198,12 @@ export class Network implements INetwork {
     peerId: PeerId,
     request: phase0.BeaconBlocksByRangeRequest
   ): Promise<BlockInput[]> {
-    return beaconBlocksMaybeBlobsByRange.call(this, this.config, peerId, request, this.clock.currentEpoch);
+    return beaconBlocksMaybeBlobsByRange(this.reqResp, this.config, peerId, request, this.clock.currentEpoch);
   }
 
   async beaconBlocksMaybeBlobsByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<BlockInput[]> {
-    return beaconBlocksMaybeBlobsByRoot.call(
-      this,
+    return beaconBlocksMaybeBlobsByRoot(
+      this.reqResp,
       this.config,
       peerId,
       request,
