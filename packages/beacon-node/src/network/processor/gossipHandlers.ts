@@ -34,7 +34,7 @@ import {PeerAction, PeerRpcScoreStore} from "../peers/index.js";
 import {validateLightClientFinalityUpdate} from "../../chain/validation/lightClientFinalityUpdate.js";
 import {validateLightClientOptimisticUpdate} from "../../chain/validation/lightClientOptimisticUpdate.js";
 import {validateGossipBlobSidecar} from "../../chain/validation/blobSidecar.js";
-import {BlockInput, getBlockInput} from "../../chain/blocks/types.js";
+import {BlockInput, getBlockInput, GossipedInputType} from "../../chain/blocks/types.js";
 import {AttnetsService} from "../subnets/attnetsService.js";
 
 /**
@@ -172,7 +172,7 @@ export function getGossipHandlers(modules: ValidatorFnsModules, options: GossipH
         // Don't trigger this yet if full block and blobs haven't arrived yet
         if (e instanceof BlockGossipError && e.type.code === BlockErrorCode.PARENT_UNKNOWN && blockInput !== null) {
           logger.debug("Gossip block has error", {slot, root: blockHex, code: e.type.code});
-          networkEventBus.emit(NetworkEvent.unknownBlockParent, blockInput, peerIdStr);
+          events.emit(NetworkEvent.unknownBlockParent, blockInput, peerIdStr);
         }
       }
 

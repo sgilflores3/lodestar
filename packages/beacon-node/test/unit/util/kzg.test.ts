@@ -46,7 +46,7 @@ describe("C-KZG", async () => {
         // eslint-disable-next-line @typescript-eslint/naming-convention
         CAPELLA_FORK_EPOCH: 0,
         // eslint-disable-next-line @typescript-eslint/naming-convention
-        EIP4844_FORK_EPOCH: 0,
+        DENEB_FORK_EPOCH: 0,
       },
     });
 

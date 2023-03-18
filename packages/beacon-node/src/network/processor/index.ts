@@ -22,7 +22,7 @@ export type NetworkProcessorOpts = GossipHandlerOpts & {
 
 const executeGossipWorkOrderObj: Record<GossipType, true> = {
   [GossipType.beacon_block]: true,
-  [GossipType.beacon_block_and_blobs_sidecar]: true,
+  [GossipType.blob_sidecar]: true,
   [GossipType.beacon_aggregate_and_proof]: true,
   [GossipType.beacon_attestation]: true,
   [GossipType.voluntary_exit]: true,

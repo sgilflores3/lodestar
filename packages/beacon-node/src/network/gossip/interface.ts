@@ -122,7 +122,7 @@ export type GossipModules = {
 
 export type GossipBeaconNode = {
   publishBeaconBlock(signedBlock: allForks.SignedBeaconBlock): Promise<void>;
-  publishSignedBeaconBlockAndBlobsSidecar(item: deneb.SignedBeaconBlockAndBlobsSidecar): Promise<void>;
+  publishBlobSidecar(item: deneb.SignedBlobSidecar): Promise<void>;
   publishBeaconAggregateAndProof(aggregateAndProof: phase0.SignedAggregateAndProof): Promise<number>;
   publishBeaconAttestation(attestation: phase0.Attestation, subnet: number): Promise<number>;
   publishVoluntaryExit(voluntaryExit: phase0.SignedVoluntaryExit): Promise<void>;

@@ -98,7 +98,7 @@ export async function validateGossipBlobSidecar(
   // gossip and non-gossip sources)  // _[REJECT]_ The blob's block's parent (defined by `sidecar.block_parent_root`) passes validation
   // The above validation will happen while importing
   const blockState = await chain.regen
-    .getBlockSlotState(parentRoot, blobSlot, RegenCaller.validateGossipBlob)
+    .getBlockSlotState(parentRoot, blobSlot, {dontTransferCache: true}, RegenCaller.validateGossipBlob)
     .catch(() => {
       throw new BlockGossipError(GossipAction.IGNORE, {code: BlockErrorCode.PARENT_UNKNOWN, parentRoot});
     });
