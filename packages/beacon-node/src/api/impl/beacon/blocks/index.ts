@@ -182,18 +182,9 @@ export function getBeaconBlockApi({
       const executionBuilder = chain.executionBuilder;
       if (!executionBuilder) throw Error("exeutionBuilder required to publish SignedBlindedBeaconBlock");
       let signedBlock: allForks.SignedBeaconBlock;
+      // Mechanism for blobs & blocks on builder is not yet finalized
       if (config.getForkSeq(signedBlindedBlock.message.slot) >= ForkSeq.deneb) {
-        const {beaconBlock, blobSidecars} = await executionBuilder.submitBlindedBlockV2(signedBlindedBlock);
-        signedBlock = beaconBlock;
-        // add this blobs to the map for access & broadcasting in publishBlock
-        const {blockHash} = signedBlindedBlock.message.body.executionPayloadHeader;
-        const slot = signedBlindedBlock.message.slot;
-        chain.producedBlobSidecarsCache.set(toHexString(blockHash), {blobSidecars, slot});
-        // TODO: Do we need to prune here ? prune will anyway be called in local execution flow
-        // pruneSetToMax(
-        //   chain.producedBlobSidecarsCache,
-        //   chain.opts.maxCachedBlobsSidecar ?? DEFAULT_MAX_CACHED_BLOBS_SIDECAR
-        // );
+        throw Error("exeutionBuilder not yet implemented for deneb+ forks");
       } else {
         signedBlock = await executionBuilder.submitBlindedBlock(signedBlindedBlock);
       }

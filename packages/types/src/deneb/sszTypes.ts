@@ -211,7 +211,7 @@ export const SignedBlindedBlobSidecar = new ContainerType(
 );
 
 // TODO: deneb cleanup once the builder-api gets rectified for deneb
-// as the type is used in submitBlindedBlockV2 response
+// as the type might be used in builder getHeader responses
 export const SignedBeaconBlockAndBlobSidecars = new ContainerType(
   {
     beaconBlock: SignedBeaconBlock,
