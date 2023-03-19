@@ -274,7 +274,7 @@ export function getValidatorApi({
 
     async getBlob(blockRoot, index) {
       const blockRootHex = toHex(blockRoot);
-      const blob = (chain.producedBlobSidecarsCache.get(blockRootHex)?.blobSidecars ?? []).slice(index, index + 1)[0];
+      const blob = (chain.producedBlobSidecarsCache.get(blockRootHex)?.blobSidecars ?? [])[index];
       if (blob === undefined) {
         throw Error(`Blob not found for blockRoot=${blockRootHex} index=${index}`);
       }

@@ -52,7 +52,7 @@ export async function beaconBlocksMaybeBlobsByRange(
   }
 }
 
-// Assumes that the blobs are in the same sequence as blocks, doesn't require block to be sorted 
+// Assumes that the blobs are in the same sequence as blocks, doesn't require block to be sorted
 export function matchBlockWithBlobs(
   config: BeaconConfig,
   allBlocks: allForks.SignedBeaconBlock[],
