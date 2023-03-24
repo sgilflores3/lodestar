@@ -55,5 +55,6 @@ export class StubbedBeaconDb extends BeaconDb {
     this.depositDataRoot = createStubInstance(DepositDataRootRepository);
     this.eth1Data = createStubInstance(Eth1DataRepository);
     this.blobSidecars = createStubInstance(BlobSidecarsRepository);
+    this.blobSidecarsArchive = createStubInstance(BlobSidecarsArchiveRepository);
   }
 }
