@@ -36,7 +36,15 @@ describe("block archiver task", function () {
     const nonCanonicalBlocks = [blocks[2]];
     forkChoiceStub.getAllAncestorBlocks.returns(canonicalBlocks);
     forkChoiceStub.getAllNonAncestorBlocks.returns(nonCanonicalBlocks);
-    await archiveBlocks(config, dbStub, forkChoiceStub, lightclientServer, logger, {epoch: 5, rootHex: ZERO_HASH_HEX});
+    await archiveBlocks(
+      config,
+      dbStub,
+      forkChoiceStub,
+      lightclientServer,
+      logger,
+      {epoch: 5, rootHex: ZERO_HASH_HEX},
+      currentEpoch
+    );
 
     expect(dbStub.blockArchive.batchPutBinary.getCall(0).args[0]).to.deep.equal(
       canonicalBlocks.map((summary) => ({

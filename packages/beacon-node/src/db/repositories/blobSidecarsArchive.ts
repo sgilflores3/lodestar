@@ -13,7 +13,7 @@ export class BlobSidecarsArchiveRepository extends Repository<Slot, deneb.BlobSi
     super(config, db, Bucket.allForks_blobSidecarsArchive, ssz.deneb.BlobSidecarsWrapper);
   }
 
-    // Handle key as slot
+  // Handle key as slot
 
   getId(value: deneb.BlobSidecarsWrapper): Slot {
     return value.slot;

@@ -1,6 +1,6 @@
 import {GENESIS_SLOT, MAX_REQUEST_BLOB_SIDECARS} from "@lodestar/params";
 import {ContextBytesType, EncodedPayloadBytes, EncodedPayloadType, ResponseError, RespStatus} from "@lodestar/reqresp";
-import {deneb} from "@lodestar/types";
+import {deneb, Slot} from "@lodestar/types";
 import {fromHex} from "@lodestar/utils";
 import {IBeaconChain} from "../../../chain/index.js";
 import {IBeaconDb} from "../../../db/index.js";
@@ -15,6 +15,18 @@ export async function* onBlobSidecarsByRange(
   const {startSlot, count} = validateBlobSidecarsByRangeRequest(request);
   const endSlot = startSlot + count;
   const finalizedSlot = chain.forkChoice.getFinalizedBlock().slot;
+
+  // Finalized range of blobs
+
+  if (startSlot <= finalizedSlot) {
+    // Chain of blobs won't change
+    for await (const {key, value: blobSideCarsBytesWrapped} of db.blobSidecarsArchive.binaryEntriesStream({
+      gte: startSlot,
+      lt: endSlot,
+    })) {
+      yield* iterateBlobBytesFromWrapper(blobSideCarsBytesWrapped, db.blobSidecarsArchive.decodeKey(key));
+    }
+  }
 
   if (endSlot > finalizedSlot) {
     const headRoot = chain.forkChoice.getHeadRoot();
@@ -37,30 +49,7 @@ export async function* onBlobSidecarsByRange(
           // Handle the same to onBeaconBlocksByRange
           throw new ResponseError(RespStatus.SERVER_ERROR, `No item for root ${block.blockRoot} slot ${block.slot}`);
         }
-
-        const blobSideCarsBytes = blobSideCarsBytesWrapped.slice(BLOB_SIDECARS_IN_WRAPPER_INDEX);
-        const blobsLen = blobSideCarsBytes.length / BLOBSIDECAR_FIXED_SIZE;
-
-        for (let index = 0; index < blobsLen; index++) {
-          const blobSideCarBytes = blobSideCarsBytes.slice(
-            index * BLOBSIDECAR_FIXED_SIZE,
-            (index + 1) * BLOBSIDECAR_FIXED_SIZE
-          );
-          if (blobSideCarBytes.length !== BLOBSIDECAR_FIXED_SIZE) {
-            throw new ResponseError(
-              RespStatus.SERVER_ERROR,
-              `Invalid blobSidecar index=${index} bytes length=${blobSideCarBytes.length} expected=${BLOBSIDECAR_FIXED_SIZE} for ${block.blockRoot} slot ${block.slot} blobsLen=${blobsLen}`
-            );
-          }
-          yield {
-            type: EncodedPayloadType.bytes,
-            bytes: blobSideCarBytes,
-            contextBytes: {
-              type: ContextBytesType.ForkDigest,
-              forkSlot: block.slot,
-            },
-          };
-        }
+        yield* iterateBlobBytesFromWrapper(blobSideCarsBytesWrapped, block.slot);
       }
 
       // If block is after endSlot, stop iterating
@@ -68,6 +57,35 @@ export async function* onBlobSidecarsByRange(
         break;
       }
     }
+  }
+}
+
+export function* iterateBlobBytesFromWrapper(
+  blobSideCarsBytesWrapped: Uint8Array,
+  blockSlot: Slot
+): Iterable<EncodedPayloadBytes> {
+  const blobSideCarsBytes = blobSideCarsBytesWrapped.slice(BLOB_SIDECARS_IN_WRAPPER_INDEX);
+  const blobsLen = blobSideCarsBytes.length / BLOBSIDECAR_FIXED_SIZE;
+
+  for (let index = 0; index < blobsLen; index++) {
+    const blobSideCarBytes = blobSideCarsBytes.slice(
+      index * BLOBSIDECAR_FIXED_SIZE,
+      (index + 1) * BLOBSIDECAR_FIXED_SIZE
+    );
+    if (blobSideCarBytes.length !== BLOBSIDECAR_FIXED_SIZE) {
+      throw new ResponseError(
+        RespStatus.SERVER_ERROR,
+        `Invalid blobSidecar index=${index} bytes length=${blobSideCarBytes.length} expected=${BLOBSIDECAR_FIXED_SIZE} for slot ${blockSlot} blobsLen=${blobsLen}`
+      );
+    }
+    yield {
+      type: EncodedPayloadType.bytes,
+      bytes: blobSideCarBytes,
+      contextBytes: {
+        type: ContextBytesType.ForkDigest,
+        forkSlot: blockSlot,
+      },
+    };
   }
 }
 
