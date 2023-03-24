@@ -79,7 +79,8 @@ export class Archiver {
         this.chain.forkChoice,
         this.chain.lightClientServer,
         this.logger,
-        finalized
+        finalized,
+        this.chain.clock.currentEpoch
       );
 
       // should be after ArchiveBlocksTask to handle restart cleanly

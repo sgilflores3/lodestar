@@ -15,6 +15,7 @@ import {
   SyncCommitteeWitnessRepository,
   BackfilledRanges,
   BlobSidecarsRepository,
+  BlobSidecarsArchiveRepository,
   BLSToExecutionChangeRepository,
 } from "../../../src/db/repositories/index.js";
 import {PreGenesisState, PreGenesisStateLastProcessedBlock} from "../../../src/db/single/index.js";
@@ -33,6 +34,7 @@ export function getStubbedBeaconDb(): IBeaconDb {
 
     // finalized blocks
     blockArchive: createStubInstance(BlockArchiveRepository),
+    blobSidecarsArchive: createStubInstance(BlobSidecarsArchiveRepository),
 
     // finalized states
     stateArchive: createStubInstance(StateArchiveRepository),

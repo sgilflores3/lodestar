@@ -1,4 +1,5 @@
 export {BlobSidecarsRepository} from "./blobSidecars.js";
+export {BlobSidecarsArchiveRepository} from "./blobSidecarsArchive.js";
 export {BlockRepository} from "./block.js";
 export {BlockArchiveBatchPutBinaryItem, BlockArchiveRepository, BlockFilterOptions} from "./blockArchive.js";
 export {StateArchiveRepository} from "./stateArchive.js";

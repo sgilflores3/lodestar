@@ -15,6 +15,7 @@ import {
   VoluntaryExitRepository,
   BLSToExecutionChangeRepository,
   BlobSidecarsRepository,
+  BlobSidecarsArchiveRepository,
 } from "../../../src/db/repositories/index.js";
 import {createStubInstance} from "../types.js";
 
@@ -25,6 +26,7 @@ export class StubbedBeaconDb extends BeaconDb {
   blockArchive: SinonStubbedInstance<BlockArchiveRepository> & BlockArchiveRepository;
 
   blobSidecars: SinonStubbedInstance<BlobSidecarsRepository> & BlobSidecarsRepository;
+  blobSidecarsArchive: SinonStubbedInstance<BlobSidecarsArchiveRepository> & BlobSidecarsArchiveRepository;
 
   stateArchive: SinonStubbedInstance<StateArchiveRepository> & StateArchiveRepository;
 
