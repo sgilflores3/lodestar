@@ -34,6 +34,7 @@ describe("block archiver task", function () {
     );
     const canonicalBlocks = [blocks[4], blocks[3], blocks[1], blocks[0]];
     const nonCanonicalBlocks = [blocks[2]];
+    const currentEpoch = 8;
     forkChoiceStub.getAllAncestorBlocks.returns(canonicalBlocks);
     forkChoiceStub.getAllNonAncestorBlocks.returns(nonCanonicalBlocks);
     await archiveBlocks(
