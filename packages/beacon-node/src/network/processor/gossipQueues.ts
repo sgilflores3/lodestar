@@ -15,8 +15,8 @@ const gossipQueueOpts: {
 } = {
   // validation gossip block asap
   [GossipType.beacon_block]: {maxLength: 1024, type: QueueType.FIFO},
-  // TODO DENEB: What's a good queue max given that now blocks are much bigger?
-  [GossipType.blob_sidecar]: {maxLength: 32, type: QueueType.FIFO},
+  // gossip length for blob is beacon block length * max blobs per block = 4096
+  [GossipType.blob_sidecar]: {maxLength: 4096, type: QueueType.FIFO},
   // lighthoue has aggregate_queue 4096 and unknown_block_aggregate_queue 1024, we use single queue
   [GossipType.beacon_aggregate_and_proof]: {maxLength: 5120, type: QueueType.LIFO},
   // lighthouse has attestation_queue 16384 and unknown_block_attestation_queue 8192, we use single queue

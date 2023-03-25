@@ -375,14 +375,7 @@ export class ValidatorStore {
     // Don't use `computeSigningRoot()` here to compute the objectRoot in typesafe function blindedOrFullBlockHashTreeRoot()
     const signingRoot = ssz.phase0.SigningData.hashTreeRoot({objectRoot: blobRoot, domain});
 
-    // TODO: freetheblobs
-    // try {
-    //   await this.slashingProtection.checkAndInsertBlockProposal(pubkey, {slot: blindedOrFull.slot, signingRoot});
-    // } catch (e) {
-    //   this.metrics?.slashingProtectionBlockError.inc();
-    //   throw e;
-    // }
-
+    // Slashing protection is not required as blobs are binded to blocks which are already protected
     const signableMessage: SignableMessage = {
       type: SignableMessageType.BLOB,
       data: blindedOrFull,

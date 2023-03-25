@@ -354,14 +354,7 @@ export class Network implements INetwork {
   }
 
   async beaconBlocksMaybeBlobsByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<BlockInput[]> {
-    return beaconBlocksMaybeBlobsByRoot(
-      this.config,
-      this.reqResp,
-      peerId,
-      request
-      // this.clock.currentSlot,
-      // this.chain.forkChoice.getFinalizedBlock().slot
-    );
+    return beaconBlocksMaybeBlobsByRoot(this.config, this.reqResp, peerId, request);
   }
 
   /**
@@ -547,12 +540,11 @@ export class Network implements INetwork {
   private coreTopicsAtFork(fork: ForkName): GossipTopicTypeMap[keyof GossipTopicTypeMap][] {
     // Common topics for all forks
     const topics: GossipTopicTypeMap[keyof GossipTopicTypeMap][] = [
-      // {type: GossipType.beacon_block}, // Handled below
+      {type: GossipType.beacon_block},
       {type: GossipType.beacon_aggregate_and_proof},
       {type: GossipType.voluntary_exit},
       {type: GossipType.proposer_slashing},
       {type: GossipType.attester_slashing},
-      {type: GossipType.beacon_block},
     ];
 
     // After Deneb also track blob_sidecar_{index}

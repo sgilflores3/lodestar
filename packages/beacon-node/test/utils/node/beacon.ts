@@ -6,7 +6,7 @@ import {config as minimalConfig} from "@lodestar/config/default";
 import {createBeaconConfig, createChainForkConfig, ChainConfig} from "@lodestar/config";
 import {Logger, RecursivePartial} from "@lodestar/utils";
 import {LevelDbController} from "@lodestar/db";
-import {phase0} from "@lodestar/types";
+import {phase0, ssz} from "@lodestar/types";
 import {ForkSeq, GENESIS_SLOT} from "@lodestar/params";
 import {BeaconStateAllForks} from "@lodestar/state-transition";
 import {isPlainObject} from "@lodestar/utils";
@@ -80,10 +80,9 @@ export async function getDevBeaconNode(
     await db.blockArchive.add(block);
 
     if (config.getForkSeq(GENESIS_SLOT) >= ForkSeq.deneb) {
-      // TODO: freetheblobs
-      // const blobSidecars = ssz.deneb.BlobSidecars.defaultValue();
-      // blobSidecar.beaconBlockRoot = config.getForkTypes(GENESIS_SLOT).BeaconBlock.hashTreeRoot(block.message);
-      // await db.blobSidecar.add(blobSidecar);
+      const blobSidecars = ssz.deneb.BlobSidecarsWrapper.defaultValue();
+      blobSidecars.blockRoot = config.getForkTypes(GENESIS_SLOT).BeaconBlock.hashTreeRoot(block.message);
+      await db.blobSidecars.add(blobSidecars);
     }
   }
 

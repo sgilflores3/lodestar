@@ -9,7 +9,6 @@ import {
 
 import {BlobSidecarError, BlobSidecarErrorCode} from "../errors/blobSidecarError.js";
 import {GossipAction} from "../errors/gossipValidation.js";
-import {byteArrayEquals} from "../../util/bytes.js";
 import {ckzg} from "../../util/kzg.js";
 import {IBeaconChain} from "../interface.js";
 import {RegenCaller} from "../regen/index.js";
@@ -71,6 +70,7 @@ export async function validateGossipBlobSidecar(
   }
 
   // TODO: freetheblobs - check for badblock
+  // TODO: freetheblobs - check that its first blob with valid signature
 
   // _[IGNORE]_ The blob's block's parent (defined by `sidecar.block_parent_root`) has been seen (via both
   // gossip and non-gossip sources) (a client MAY queue blocks for processing once the parent block is
@@ -89,6 +89,15 @@ export async function validateGossipBlobSidecar(
     // (Non-Lighthouse): Since we prune all blocks non-descendant from finalized checking the `db.block` database won't be useful to guard
     // against known bad fork blocks, so we throw PARENT_UNKNOWN for cases (1) and (2)
     throw new BlockGossipError(GossipAction.IGNORE, {code: BlockErrorCode.PARENT_UNKNOWN, parentRoot});
+  }
+
+  // [REJECT] The blob is from a higher slot than its parent.
+  if (parentBlock.slot >= blobSlot) {
+    throw new BlockGossipError(GossipAction.IGNORE, {
+      code: BlockErrorCode.NOT_LATER_THAN_PARENT,
+      parentSlot: parentBlock.slot,
+      slot: blobSlot,
+    });
   }
 
   // getBlockSlotState also checks for whether the current finalized checkpoint is an ancestor of the block.
@@ -160,18 +169,22 @@ export function validateBlobSidecars(
     const proofs = [];
     for (let index = 0; index < blobSidecars.length; index++) {
       const blobSidecar = blobSidecars[index];
-      if (
-        blobSidecar.slot !== blockSlot ||
-        !byteArrayEquals(blobSidecar.blockRoot, blockRoot) ||
-        blobSidecar.index !== index ||
-        !byteArrayEquals(expectedKzgCommitments[index], blobSidecar.kzgCommitment)
-      ) {
-        throw new Error(
-          `Invalid blob with slot=${blobSidecar.slot} blockRoot=${toHex(blockRoot)} index=${
-            blobSidecar.index
-          } for the block root=${toHex(blockRoot)} slot=${blockSlot} index=${index}`
-        );
-      }
+      // TODO: freetheblobs
+      //
+      // Cleaning up commitment match check as the batch verify of commitments blobs and proofs
+      // is should be matching this
+      // if (
+      //   blobSidecar.slot !== blockSlot ||
+      //   !byteArrayEquals(blobSidecar.blockRoot, blockRoot) ||
+      //   blobSidecar.index !== index ||
+      //   !byteArrayEquals(expectedKzgCommitments[index], blobSidecar.kzgCommitment)
+      // ) {
+      //   throw new Error(
+      //     `Invalid blob with slot=${blobSidecar.slot} blockRoot=${toHex(blockRoot)} index=${
+      //       blobSidecar.index
+      //     } for the block root=${toHex(blockRoot)} slot=${blockSlot} index=${index}`
+      //   );
+      // }
       blobs.push(blobSidecar.blob);
       proofs.push(blobSidecar.kzgProof);
     }
