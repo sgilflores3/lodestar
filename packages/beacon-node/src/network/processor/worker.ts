@@ -50,16 +50,20 @@ export class NetworkWorker {
         );
       }
 
-      this.events.emit(
-        NetworkEvent.gossipMessageValidationResult,
-        message.msgId,
-        message.propagationSource,
-        acceptance.result
-      );
+      setTimeout(() => {
+        this.events.emit(
+          NetworkEvent.gossipMessageValidationResult,
+          message.msgId,
+          message.propagationSource,
+          acceptance.result
+        );
+      });
     } else if (acceptance.type === "retryUnknownBlock") {
       // we don't have to deserialize to gossip object the next time
       message.gossipObject = acceptance.gossipObject;
-      this.events.emit(NetworkEvent.reprocessGossipsubMessage, message, ReprocessGossipMessageType.unknownBlock);
+      setTimeout(() => {
+        this.events.emit(NetworkEvent.reprocessGossipsubMessage, message, ReprocessGossipMessageType.unknownBlock);
+      }, 0);
     }
   }
 }
