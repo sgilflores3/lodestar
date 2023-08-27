@@ -4,19 +4,19 @@ import {expect} from "chai";
 import {toHexString} from "@chainsafe/ssz";
 import {routes} from "@lodestar/api";
 import {ApiError} from "@lodestar/api";
-import {CLClient, ELClient} from "../utils/simulation/interfaces.js";
+import {BeaconClient, ExecutionClient} from "../utils/simulation/interfaces.js";
 import {SimulationEnvironment} from "../utils/simulation/SimulationEnvironment.js";
 import {getEstimatedTimeInSecForRun, logFilesDir} from "../utils/simulation/utils/index.js";
 import {waitForSlot} from "../utils/simulation/utils/network.js";
 import {SIM_TESTS_SECONDS_PER_SLOT} from "../utils/simulation/constants.js";
 
-const genesisSlotsDelay = 10;
+const genesisDelaySeconds = 10 * SIM_TESTS_SECONDS_PER_SLOT;
 const altairForkEpoch = 2;
 const bellatrixForkEpoch = 4;
 const validatorCount = 2;
 const runTimeoutMs =
   getEstimatedTimeInSecForRun({
-    genesisSlotDelay: genesisSlotsDelay,
+    genesisDelaySeconds,
     secondsPerSlot: SIM_TESTS_SECONDS_PER_SLOT,
     runTill: 2,
     // After adding Nethermind its took longer to complete
@@ -30,14 +30,14 @@ const env = await SimulationEnvironment.initWithDefaults(
     chainConfig: {
       ALTAIR_FORK_EPOCH: altairForkEpoch,
       BELLATRIX_FORK_EPOCH: bellatrixForkEpoch,
-      GENESIS_DELAY: genesisSlotsDelay,
+      GENESIS_DELAY: genesisDelaySeconds,
     },
   },
   [
     {
       id: "node-1",
-      cl: {type: CLClient.Lodestar, options: {clientOptions: {"sync.isSingleNode": true}}},
-      el: ELClient.Geth,
+      beacon: {type: BeaconClient.Lodestar, options: {clientOptions: {"sync.isSingleNode": true}}},
+      execution: ExecutionClient.Geth,
       keysCount: validatorCount,
       mining: true,
     },
@@ -45,7 +45,7 @@ const env = await SimulationEnvironment.initWithDefaults(
 );
 await env.start({runTimeoutMs});
 
-const node = env.nodes[0].cl;
+const node = env.nodes[0].beacon;
 await waitForSlot(2, env.nodes, {env, silent: true});
 
 const res = await node.api.beacon.getStateValidators("head");
@@ -125,6 +125,7 @@ await env.tracker.assert("BN Not Synced", async () => {
     syncDistance: "0",
     isSyncing: false,
     isOptimistic: false,
+    elOffline: false,
   };
 
   const res = await node.api.node.getSyncingStatus();

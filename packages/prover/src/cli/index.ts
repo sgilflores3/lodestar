@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 // MUST import first to apply preset from args
+import "./applyPreset.js";
 import {YargsError} from "../utils/errors.js";
 import {getLodestarProverCli, yarg} from "./cli.js";
 import "source-map-support/register.js";
 
 const prover = getLodestarProverCli();
 
-prover
+void prover
   .fail((msg, err) => {
     if (msg) {
       // Show command help message when no command is provided

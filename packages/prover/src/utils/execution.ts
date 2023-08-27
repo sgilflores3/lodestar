@@ -1,108 +1,71 @@
-import {RLP} from "@ethereumjs/rlp";
-import {Trie} from "@ethereumjs/trie";
-import {Account} from "@ethereumjs/util";
-import {keccak256} from "ethereum-cryptography/keccak.js";
-import {Bytes32} from "@lodestar/types";
-import {ethGetBalance} from "../verified_requests/eth_getBalance.js";
-import {ELRequestPayload, ELResponse, ELProof, ELStorageProof, HexString} from "../types.js";
-import {ProofProvider} from "../proof_provider/proof_provider.js";
-import {ELRequestMethod, ELVerifiedRequestHandler} from "../interfaces.js";
-import {hexToBuffer, padLeft} from "./conversion.js";
+import {Common, CustomChain, Hardfork} from "@ethereumjs/common";
+import {ELApiParams, ELApiReturn, ELTransaction} from "../types.js";
+import {isValidResponse} from "./json_rpc.js";
+import {isBlockNumber, isPresent} from "./validation.js";
+import {ELRpc} from "./rpc.js";
 
-const emptyAccountSerialize = new Account().serialize();
-const storageKeyLength = 32;
+export type Optional<T, K extends keyof T> = Omit<T, K> & {[P in keyof T]?: T[P] | undefined};
 
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
-const supportedELRequests: Record<string, ELVerifiedRequestHandler<any, any>> = {eth_getBalance: ethGetBalance};
+export async function getELCode(rpc: ELRpc, args: ELApiParams["eth_getCode"]): Promise<ELApiReturn["eth_getCode"]> {
+  const codeResult = await rpc.request("eth_getCode", args, {raiseError: false});
 
-export async function processAndVerifyRequest({
-  payload,
-  handler,
-  proofProvider,
-}: {
-  payload: ELRequestPayload;
-  handler: ELRequestMethod;
-  proofProvider: ProofProvider;
-}): Promise<ELResponse | undefined> {
-  await proofProvider.waitToBeReady();
-  const verifiedHandler = supportedELRequests[payload.method];
-
-  if (verifiedHandler !== undefined) {
-    return verifiedHandler({payload, handler, rootProvider: proofProvider});
+  if (!isValidResponse(codeResult)) {
+    throw new Error(`Can not find code for address=${args[0]}`);
   }
 
-  // eslint-disable-next-line no-console
-  console.warn(`Request handler for ${payload.method} is not implemented.`);
-  return handler(payload);
+  return codeResult.result;
 }
 
-export async function getELProof(
-  handler: ELRequestMethod,
-  args: [address: string, storageKeys: string[], block: number | string]
-): Promise<ELProof> {
-  // TODO: Find better way to generate random id
-  const proof = await handler({
-    jsonrpc: "2.0",
-    method: "eth_getProof",
-    params: args,
-    id: (Math.random() * 10000).toFixed(0),
+export async function getELProof(rpc: ELRpc, args: ELApiParams["eth_getProof"]): Promise<ELApiReturn["eth_getProof"]> {
+  const proof = await rpc.request("eth_getProof", args, {raiseError: false});
+  if (!isValidResponse(proof)) {
+    throw new Error(`Can not find proof for address=${args[0]}`);
+  }
+  return proof.result;
+}
+
+export async function getELBlock(
+  rpc: ELRpc,
+  args: ELApiParams["eth_getBlockByNumber"]
+): Promise<ELApiReturn["eth_getBlockByNumber"]> {
+  const block = await rpc.request(isBlockNumber(args[0]) ? "eth_getBlockByNumber" : "eth_getBlockByHash", args, {
+    raiseError: false,
   });
-  if (!proof) {
-    throw new Error("Can not find proof for given address.");
-  }
-  return proof.result as ELProof;
-}
 
-export async function isValidAccount({
-  address,
-  stateRoot,
-  proof,
-}: {
-  address: HexString;
-  stateRoot: Bytes32;
-  proof: ELProof;
-}): Promise<boolean> {
-  const trie = await Trie.create();
-  const key = keccak256(hexToBuffer(address));
-
-  const expectedAccountRLP = await trie.verifyProof(
-    Buffer.from(stateRoot),
-    Buffer.from(key),
-    proof.accountProof.map(hexToBuffer)
-  );
-
-  // Shresth Agrawal (2022) Patronum source code. https://github.com/lightclients/patronum
-  const account = Account.fromAccountData({
-    nonce: BigInt(proof.nonce),
-    balance: BigInt(proof.balance),
-    storageRoot: proof.storageHash,
-    codeHash: proof.codeHash,
-  });
-  return account.serialize().equals(expectedAccountRLP ? expectedAccountRLP : emptyAccountSerialize);
-}
-
-export async function isValidStorageKeys({
-  storageKeys,
-  proof,
-}: {
-  storageKeys: HexString[];
-  proof: ELStorageProof;
-}): Promise<boolean> {
-  const trie = await Trie.create();
-
-  for (let i = 0; i < storageKeys.length; i++) {
-    const sp = proof.storageProof[i];
-    const key = keccak256(padLeft(hexToBuffer(storageKeys[i]), storageKeyLength));
-    const expectedStorageRLP = await trie.verifyProof(
-      hexToBuffer(proof.storageHash),
-      Buffer.from(key),
-      sp.proof.map(hexToBuffer)
-    );
-    const isStorageValid =
-      (!expectedStorageRLP && sp.value === "0x0") ||
-      (!!expectedStorageRLP && expectedStorageRLP.equals(RLP.encode(sp.value)));
-    if (!isStorageValid) return false;
+  if (!isValidResponse(block)) {
+    throw new Error(`Can not find block. id=${args[0]}`);
   }
 
-  return true;
+  return block.result;
+}
+
+export function getChainCommon(network: string): Common {
+  switch (network) {
+    case "mainnet":
+    case "goerli":
+    case "ropsten":
+    case "sepolia":
+    case "holesky":
+      // TODO: Not sure how to detect the fork during runtime
+      return new Common({chain: network, hardfork: Hardfork.Shanghai});
+    case "minimal":
+      // TODO: Not sure how to detect the fork during runtime
+      return new Common({chain: "mainnet", hardfork: Hardfork.Shanghai});
+    case "gnosis":
+      return new Common({chain: CustomChain.xDaiChain});
+    default:
+      throw new Error(`Non supported network "${network}"`);
+  }
+}
+
+export function getTxType(tx: ELTransaction): number {
+  if (isPresent(tx.maxFeePerGas) || isPresent(tx.maxPriorityFeePerGas)) {
+    return 2;
+  }
+
+  if (isPresent(tx.accessList)) {
+    return 1;
+  }
+
+  return 0;
 }

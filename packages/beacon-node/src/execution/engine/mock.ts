@@ -1,18 +1,14 @@
 import crypto from "node:crypto";
-import {
-  kzgCommitmentToVersionedHash,
-  OPAQUE_TX_BLOB_VERSIONED_HASHES_OFFSET,
-  OPAQUE_TX_MESSAGE_OFFSET,
-} from "@lodestar/state-transition";
+import {kzgCommitmentToVersionedHash} from "@lodestar/state-transition";
 import {bellatrix, deneb, RootHex, ssz} from "@lodestar/types";
 import {fromHex, toHex} from "@lodestar/utils";
 import {
   BYTES_PER_FIELD_ELEMENT,
   FIELD_ELEMENTS_PER_BLOB,
-  BLOB_TX_TYPE,
   ForkSeq,
   ForkExecution,
   ForkName,
+  BLOB_TX_TYPE,
 } from "@lodestar/params";
 import {ZERO_HASH_HEX} from "../../constants/index.js";
 import {ckzg} from "../../util/kzg.js";
@@ -28,7 +24,7 @@ import {
   BlobsBundleRpc,
   ExecutionPayloadBodyRpc,
 } from "./types.js";
-import {ExecutePayloadStatus, PayloadIdCache} from "./interface.js";
+import {ExecutionPayloadStatus, PayloadIdCache} from "./interface.js";
 import {JsonRpcBackend} from "./utils.js";
 
 const INTEROP_GAS_LIMIT = 30e6;
@@ -94,11 +90,10 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
       engine_newPayloadV3: this.notifyNewPayload.bind(this),
       engine_forkchoiceUpdatedV1: this.notifyForkchoiceUpdate.bind(this),
       engine_forkchoiceUpdatedV2: this.notifyForkchoiceUpdate.bind(this),
+      engine_forkchoiceUpdatedV3: this.notifyForkchoiceUpdate.bind(this),
       engine_getPayloadV1: this.getPayload.bind(this),
       engine_getPayloadV2: this.getPayload.bind(this),
       engine_getPayloadV3: this.getPayload.bind(this),
-      engine_exchangeTransitionConfigurationV1: this.exchangeTransitionConfigurationV1.bind(this),
-      engine_getBlobsBundleV1: this.getBlobsBundle.bind(this),
       engine_getPayloadBodiesByHashV1: this.getPayloadBodiesByHash.bind(this),
       engine_getPayloadBodiesByRangeV1: this.getPayloadBodiesByRange.bind(this),
     };
@@ -140,7 +135,9 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
    * `engine_newPayloadV1`
    */
   private notifyNewPayload(
-    executionPayloadRpc: EngineApiRpcParamTypes["engine_newPayloadV1"][0]
+    executionPayloadRpc: EngineApiRpcParamTypes["engine_newPayloadV1"][0],
+    // TODO deneb: add versionedHashes validation
+    _versionedHashes?: EngineApiRpcParamTypes["engine_newPayloadV3"][1]
   ): EngineApiRpcReturnTypes["engine_newPayloadV1"] {
     const blockHash = executionPayloadRpc.blockHash;
     const parentHash = executionPayloadRpc.parentHash;
@@ -174,7 +171,7 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
     if (!this.validBlocks.has(parentHash)) {
       // if requisite data for the payload's acceptance or validation is missing
       // return {status: SYNCING, latestValidHash: null, validationError: null}
-      return {status: ExecutePayloadStatus.SYNCING, latestValidHash: null, validationError: null};
+      return {status: ExecutionPayloadStatus.SYNCING, latestValidHash: null, validationError: null};
     }
 
     // 4. Client software MAY NOT validate the payload if the payload doesn't belong to the canonical chain.
@@ -193,7 +190,7 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
     // IF the payload has been fully validated while processing the call
     // RETURN payload status from the Payload validation process
     // If validation succeeds, the response MUST contain {status: VALID, latestValidHash: payload.blockHash}
-    return {status: ExecutePayloadStatus.VALID, latestValidHash: blockHash, validationError: null};
+    return {status: ExecutionPayloadStatus.VALID, latestValidHash: blockHash, validationError: null};
   }
 
   /**
@@ -249,7 +246,7 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
       //
       // > TODO: Implement
       return {
-        payloadStatus: {status: ExecutePayloadStatus.SYNCING, latestValidHash: null, validationError: null},
+        payloadStatus: {status: ExecutionPayloadStatus.SYNCING, latestValidHash: null, validationError: null},
         payloadId: null,
       };
     }
@@ -308,34 +305,37 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
         executionPayload.transactions.push(tx);
       }
 
-      const kzgs: deneb.KZGCommitment[] = [];
+      const commitments: deneb.KZGCommitment[] = [];
       const blobs: deneb.Blob[] = [];
+      const proofs: deneb.KZGProof[] = [];
 
       // if post deneb, add between 0 and 2 blob transactions
       if (ForkSeq[fork] >= ForkSeq.deneb) {
         const denebTxCount = Math.round(2 * Math.random());
         for (let i = 0; i < denebTxCount; i++) {
           const blob = generateRandomBlob();
-          const kzg = ckzg.blobToKzgCommitment(blob);
-          executionPayload.transactions.push(transactionForKzgCommitment(kzg));
-          kzgs.push(kzg);
+          const commitment = ckzg.blobToKzgCommitment(blob);
+          const proof = ckzg.computeBlobKzgProof(blob, commitment);
+          executionPayload.transactions.push(transactionForKzgCommitment(commitment));
+          commitments.push(commitment);
           blobs.push(blob);
+          proofs.push(proof);
         }
       }
 
       this.preparingPayloads.set(payloadId, {
         executionPayload: serializeExecutionPayload(fork, executionPayload),
         blobsBundle: serializeBlobsBundle({
-          blockHash: toHex(executionPayload.blockHash),
-          kzgs,
+          commitments,
           blobs,
+          proofs,
         }),
       });
 
       // IF the payload is deemed VALID and the build process has begun
       // {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: buildProcessId}
       return {
-        payloadStatus: {status: ExecutePayloadStatus.VALID, latestValidHash: null, validationError: null},
+        payloadStatus: {status: ExecutionPayloadStatus.VALID, latestValidHash: null, validationError: null},
         payloadId: String(payloadId as number),
       };
     }
@@ -345,7 +345,7 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
       // IF the payload is deemed VALID and a build process hasn't been started
       // {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}
       return {
-        payloadStatus: {status: ExecutePayloadStatus.VALID, latestValidHash: null, validationError: null},
+        payloadStatus: {status: ExecutionPayloadStatus.VALID, latestValidHash: null, validationError: null},
         payloadId: null,
       };
     }
@@ -386,26 +386,6 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
     return payload.executionPayload;
   }
 
-  private getBlobsBundle(
-    payloadId: EngineApiRpcParamTypes["engine_getBlobsBundleV1"][0]
-  ): EngineApiRpcReturnTypes["engine_getBlobsBundleV1"] {
-    const payloadIdNbr = Number(payloadId);
-    const payload = this.preparingPayloads.get(payloadIdNbr);
-
-    if (!payload) {
-      throw Error(`Unknown payloadId ${payloadId}`);
-    }
-
-    return payload.blobsBundle;
-  }
-
-  private exchangeTransitionConfigurationV1(
-    transitionConfiguration: EngineApiRpcParamTypes["engine_exchangeTransitionConfigurationV1"][0]
-  ): EngineApiRpcReturnTypes["engine_exchangeTransitionConfigurationV1"] {
-    // echo same configuration from consensus, which will be considered valid
-    return transitionConfiguration;
-  }
-
   private timestampToFork(timestamp: number): ForkExecution {
     if (timestamp > (this.opts.denebForkTimestamp ?? Infinity)) return ForkName.deneb;
     if (timestamp > (this.opts.capellaForkTimestamp ?? Infinity)) return ForkName.capella;
@@ -414,26 +394,13 @@ export class ExecutionEngineMockBackend implements JsonRpcBackend {
 }
 
 function transactionForKzgCommitment(kzgCommitment: deneb.KZGCommitment): bellatrix.Transaction {
-  // Some random value that after the offset's position
-  const blobVersionedHashesOffset = OPAQUE_TX_BLOB_VERSIONED_HASHES_OFFSET + 64;
-
-  // +32 for the size of versionedHash
-  const ab = new ArrayBuffer(blobVersionedHashesOffset + 32);
-  const dv = new DataView(ab);
-  const ua = new Uint8Array(ab);
-
-  // Set tx type
-  dv.setUint8(0, BLOB_TX_TYPE);
-
-  // Set offset to hashes array
-  // const blobVersionedHashesOffset =
-  //   OPAQUE_TX_MESSAGE_OFFSET + opaqueTxDv.getUint32(OPAQUE_TX_BLOB_VERSIONED_HASHES_OFFSET, true);
-  dv.setUint32(OPAQUE_TX_BLOB_VERSIONED_HASHES_OFFSET, blobVersionedHashesOffset - OPAQUE_TX_MESSAGE_OFFSET, true);
-
+  // Just use versionedHash as the transaction encoding to mock newPayloadV3 verification
+  // prefixed with BLOB_TX_TYPE
+  const transaction = new Uint8Array(33);
   const versionedHash = kzgCommitmentToVersionedHash(kzgCommitment);
-  ua.set(versionedHash, blobVersionedHashesOffset);
-
-  return ua;
+  transaction[0] = BLOB_TX_TYPE;
+  transaction.set(versionedHash, 1);
+  return transaction;
 }
 
 /**

@@ -1,56 +1,63 @@
-import {routes} from "@lodestar/api/beacon";
 import type {SecretKey} from "@chainsafe/bls/types";
+import {routes} from "@lodestar/api/beacon";
 import {ApiError} from "@lodestar/api";
-import {CLClient, CLClientKeys, SimulationAssertion} from "../interfaces.js";
+import {AssertionResult, ValidatorClientKeys, SimulationAssertion, ValidatorClient} from "../interfaces.js";
 import {arrayEquals} from "../utils/index.js";
 import {neverMatcher} from "./matchers.js";
 
-export const nodeAssertion: SimulationAssertion<"node", string> = {
+export const nodeAssertion: SimulationAssertion<"node", {health: number; keyManagerKeys: string[]}> = {
   id: "node",
   // Include into particular test with custom condition
   match: neverMatcher,
-  async assert({nodes}) {
-    const errors: string[] = [];
+  capture: async ({node}) => {
+    const {status: health} = await node.beacon.api.node.getHealth();
+    if (!node.validator) {
+      return {health, keyManagerKeys: []};
+    }
 
-    for (const node of nodes) {
-      const {status: health} = await node.cl.api.node.getHealth();
-
-      if (
-        ((health as unknown) as routes.node.NodeHealth) !== routes.node.NodeHealth.SYNCING &&
-        ((health as unknown) as routes.node.NodeHealth) !== routes.node.NodeHealth.READY
-      ) {
-        errors.push(`node health is neither READY or SYNCING. ${JSON.stringify({id: node.cl.id})}`);
-      }
-      const keys = getAllKeys(node.cl.keys);
-
-      if (keys.length === 0) {
-        continue;
-      }
-
-      // There is an authrntication issue with the lighthouse keymanager client
-      if (node.cl.client == CLClient.Lighthouse) continue;
-
-      const res = await node.cl.keyManager.listKeys();
+    let keyManagerKeys: string[];
+    // There is an authentication issue with the lighthouse keymanager client
+    if (node.validator.client == ValidatorClient.Lighthouse || getAllKeys(node.validator.keys).length === 0) {
+      keyManagerKeys = [];
+    } else {
+      const res = await node.validator.keyManager.listKeys();
       ApiError.assert(res);
-      const keyManagerKeys = res.response.data.map((k) => k.validatingPubkey);
-      const expectedPubkeys = keys.map((k) => k.toPublicKey().toHex());
+      keyManagerKeys = res.response.data.map((k) => k.validatingPubkey);
+    }
 
-      if (!arrayEquals(keyManagerKeys.sort(), expectedPubkeys.sort())) {
-        errors.push(
-          `Validator should have correct number of keys loaded. ${JSON.stringify({
-            id: node.cl.id,
-            expectedPubkeys,
-            keyManagerKeys,
-          })}`
-        );
-      }
+    return {health, keyManagerKeys};
+  },
+  async assert({node, store, slot}) {
+    const errors: AssertionResult[] = [];
+
+    // There is an authentication issue with the lighthouse keymanager client
+    if (node.validator?.client == ValidatorClient.Lighthouse) return errors;
+
+    const {health, keyManagerKeys} = store[slot];
+
+    if (health !== routes.node.NodeHealth.SYNCING && health !== routes.node.NodeHealth.READY) {
+      errors.push(["node health is neither READY or SYNCING", {node: node.beacon.id}]);
+    }
+
+    const expectedPublicKeys = node.validator
+      ? getAllKeys(node.validator.keys).map((k) => k.toPublicKey().toHex())
+      : [];
+
+    if (!arrayEquals(keyManagerKeys.sort(), expectedPublicKeys.sort())) {
+      errors.push([
+        "Validator should have correct number of keys loaded",
+        {
+          expectedPublicKeys,
+          keyManagerKeys,
+        },
+      ]);
     }
 
     return errors;
   },
 };
 
-function getAllKeys(keys: CLClientKeys): SecretKey[] {
+function getAllKeys(keys: ValidatorClientKeys): SecretKey[] {
   switch (keys.type) {
     case "local":
       return keys.secretKeys;

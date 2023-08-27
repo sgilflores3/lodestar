@@ -15,13 +15,13 @@ export function getTestServer(): {baseUrl: string; server: FastifyInstance} {
 
   server.addHook("onError", (request, reply, error, done) => {
     // eslint-disable-next-line no-console
-    console.log(`onError: ${error}`);
+    console.log(`onError: ${error.toString()}`);
     done();
   });
 
   before("start server", async () => {
     await new Promise((resolve, reject) => {
-      server.listen(port, function (err, address) {
+      server.listen({port}, function (err, address) {
         if (err !== null && err != undefined) {
           reject(err);
         } else {

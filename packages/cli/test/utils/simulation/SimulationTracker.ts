@@ -1,10 +1,12 @@
 import EventEmitter from "node:events";
+import Debug from "debug";
 import {routes} from "@lodestar/api/beacon";
 import {ChainForkConfig} from "@lodestar/config";
 import {Epoch, Slot} from "@lodestar/types";
-import {ApiError} from "@lodestar/api";
+import {isNullish} from "../../utils.js";
 import {EpochClock} from "./EpochClock.js";
 import {
+  AssertionMatch,
   AtLeast,
   NodeId,
   NodePair,
@@ -16,6 +18,9 @@ import {
 } from "./interfaces.js";
 import {defaultAssertions} from "./assertions/defaults/index.js";
 import {TableReporter} from "./TableReporter.js";
+import {fetchBlock} from "./utils/network.js";
+
+const debug = Debug("lodestar:sim:tracker");
 
 interface SimulationTrackerInitOptions {
   nodes: NodePair[];
@@ -42,6 +47,21 @@ const eventStreamEventMap = {
   [SimulationTrackerEvent.Slot]: routes.events.EventType.block,
 };
 
+type Stores = StoreTypes<typeof defaultAssertions> & StoreType<string, unknown>;
+
+export function getStoresForAssertions<D extends SimulationAssertion[]>(
+  stores: Stores,
+  dependencies: D
+): StoreTypes<D> {
+  const filterStores: Record<string, unknown> = {};
+
+  for (const assertion of dependencies) {
+    filterStores[assertion.id] = stores[assertion.id];
+  }
+
+  return filterStores as StoreTypes<D>;
+}
+
 /* eslint-disable no-console */
 export class SimulationTracker {
   readonly emitter = new EventEmitter();
@@ -49,14 +69,14 @@ export class SimulationTracker {
 
   private lastSeenSlot: Map<NodeId, Slot> = new Map();
   private slotCapture: Map<Slot, NodeId[]> = new Map();
-  private removeAssertionQueue: string[] = [];
   private signal: AbortSignal;
   private nodes: NodePair[];
   private clock: EpochClock;
   private forkConfig: ChainForkConfig;
+  private running: boolean = false;
 
   private errors: SimulationAssertionError[] = [];
-  private stores: StoreTypes<typeof defaultAssertions> & StoreType<string, unknown>;
+  private stores: Stores;
   private assertions: SimulationAssertion[];
   private assertionIdsMap: Record<string, boolean> = {};
   private constructor({signal, nodes, clock, config}: SimulationTrackerInitOptions) {
@@ -126,12 +146,15 @@ export class SimulationTracker {
   }
 
   track(node: NodePair): void {
+    debug("track", node.beacon.id);
     this.initDataForNode(node);
     this.initEventStreamForNode(node);
     this.nodes.push(node);
   }
 
   async start(): Promise<void> {
+    debug("starting tracker");
+    this.running = true;
     for (const node of this.nodes) {
       this.initEventStreamForNode(node);
     }
@@ -144,11 +167,11 @@ export class SimulationTracker {
   }
 
   async stop(): Promise<void> {
-    // Do nothing;
+    this.running = false;
   }
 
   async clockLoop(slot: number): Promise<void> {
-    while (!this.signal.aborted) {
+    while (this.running && !this.signal.aborted) {
       // Wait for 2/3 of the slot to consider it missed
       await this.clock.waitForStartOfSlot(slot + 2 / 3, slot > 0).catch((e) => {
         console.error("error on waitForStartOfSlot", e);
@@ -163,7 +186,7 @@ export class SimulationTracker {
   }
 
   onSlot(slot: Slot, node: NodePair, cb: (slot: Slot) => void): void {
-    this.emitter.once(`${node.cl.id}:slot:${slot}`, cb);
+    this.emitter.once(`${node.beacon.id}:slot:${slot}`, cb);
   }
 
   register(assertion: SimulationAssertion): void {
@@ -182,12 +205,16 @@ export class SimulationTracker {
 
     this.stores[assertion.id] = {};
     for (const node of this.nodes) {
-      this.stores[assertion.id][node.cl.id] = {};
+      this.stores[assertion.id][node.beacon.id] = {};
     }
   }
 
   record(error: AtLeast<SimulationAssertionError, "slot" | "message" | "assertionId">): void {
-    this.errors.push({...error, epoch: error.epoch ?? this.clock.getEpochForSlot(error.slot)});
+    this.errors.push({
+      ...error,
+      epoch: error.epoch ?? this.clock.getEpochForSlot(error.slot),
+      nodeId: error.nodeId ?? "N/A",
+    });
   }
 
   async assert(message: string, cb: () => void | Promise<void>): Promise<void> {
@@ -203,9 +230,9 @@ export class SimulationTracker {
   }
 
   private initDataForNode(node: NodePair): void {
-    this.lastSeenSlot.set(node.cl.id, 0);
+    this.lastSeenSlot.set(node.beacon.id, 0);
     for (const assertion of this.assertions) {
-      this.stores[assertion.id][node.cl.id] = {};
+      this.stores[assertion.id][node.beacon.id] = {};
     }
   }
 
@@ -215,52 +242,18 @@ export class SimulationTracker {
   ): Promise<void> {
     const slot = event.slot;
     const epoch = this.clock.getEpochForSlot(slot);
-    const lastSeenSlot = this.lastSeenSlot.get(node.cl.id);
+    const lastSeenSlot = this.lastSeenSlot.get(node.beacon.id);
+    debug(`processing block node=${node.beacon.id} slot=${slot} lastSeenSlot=${lastSeenSlot}`);
 
     if (lastSeenSlot !== undefined && slot > lastSeenSlot) {
-      this.lastSeenSlot.set(node.cl.id, slot);
+      this.lastSeenSlot.set(node.beacon.id, slot);
     } else {
       // We don't need to process old blocks
       return;
     }
 
-    try {
-      const block = await node.cl.api.beacon.getBlockV2(slot);
-      ApiError.assert(block);
-
-      for (const assertion of this.assertions) {
-        if (assertion.capture) {
-          const value = await assertion.capture({
-            fork: this.forkConfig.getForkName(slot),
-            slot,
-            block: block.response.data,
-            clock: this.clock,
-            node,
-            forkConfig: this.forkConfig,
-            epoch,
-            store: this.stores[assertion.id][node.cl.id],
-            // TODO: Make the store safe, to filter just the dependant stores not all
-            dependantStores: this.stores,
-          });
-          if (value !== undefined || value !== null) {
-            this.stores[assertion.id][node.cl.id][slot] = value;
-          }
-        }
-      }
-    } catch {
-      // Incase of reorg the block may not be available
-      return;
-    }
-
-    const capturedSlot = this.slotCapture.get(slot);
-    if (capturedSlot) {
-      capturedSlot.push(node.cl.id);
-      this.slotCapture.set(slot, capturedSlot);
-    } else {
-      this.slotCapture.set(slot, [node.cl.id]);
-    }
-
-    await this.applyAssertions({slot, epoch});
+    await this.processCapture({slot, epoch}, node);
+    await this.processAssert({slot, epoch});
 
     this.emit(node, SimulationTrackerEvent.Slot, {slot});
   }
@@ -279,52 +272,115 @@ export class SimulationTracker {
     // TODO: Add checkpoint tracking
   }
 
-  private async applyAssertions({slot, epoch}: {slot: Slot; epoch: Epoch}): Promise<void> {
+  private async processCapture({slot, epoch}: {slot: Slot; epoch: Epoch}, node: NodePair): Promise<void> {
+    debug(`processing capture node=${node.beacon.id} slot=${slot}`);
+
+    // It is observed that sometimes block is received on the node event stream
+    // But the http-api does not respond with the block
+    // This is a workaround to fetch the block with retries
+    const block = await fetchBlock(node, {slot, tries: 2, delay: 250, signal: this.signal});
+    if (!block) {
+      debug(`block could not be found node=${node.beacon.id} slot=${slot}`);
+      // Incase of reorg the block may not be available
+      return;
+    }
+
+    for (const assertion of this.assertions) {
+      const match = assertion.match({
+        slot,
+        epoch,
+        node,
+        clock: this.clock,
+        forkConfig: this.forkConfig,
+        fork: this.forkConfig.getForkName(slot),
+      });
+
+      if (match & AssertionMatch.None || !(match & AssertionMatch.Capture)) continue;
+
+      if (!assertion.capture) {
+        throw new Error(`Assertion "${assertion.id}" has no capture function`);
+      }
+
+      const value = await assertion.capture({
+        fork: this.forkConfig.getForkName(slot),
+        slot,
+        block,
+        clock: this.clock,
+        node,
+        forkConfig: this.forkConfig,
+        epoch,
+        dependantStores: getStoresForAssertions(this.stores, [assertion, ...(assertion.dependencies ?? [])]),
+      });
+
+      if (!isNullish(value)) {
+        this.stores[assertion.id][node.beacon.id][slot] = value;
+      }
+    }
+
+    const capturedSlot = this.slotCapture.get(slot) ?? [];
+    capturedSlot.push(node.beacon.id);
+    this.slotCapture.set(slot, capturedSlot);
+  }
+
+  private async processAssert({slot, epoch}: {slot: Slot; epoch: Epoch}): Promise<void> {
+    debug(`processing assert slot=${slot} epoch=${epoch}`);
     const capturedForNodes = this.slotCapture.get(slot);
     if (!capturedForNodes || capturedForNodes.length < this.nodes.length) {
       // We need to wait for all nodes to capture data for that slot
       return;
     }
+    const removeAssertions: string[] = [];
 
-    for (const assertion of this.assertions) {
-      const match = assertion.match({slot, epoch, clock: this.clock, forkConfig: this.forkConfig});
-      if ((typeof match === "boolean" && match) || (typeof match === "object" && match.match)) {
+    for (const node of this.nodes) {
+      for (const assertion of this.assertions) {
+        const match = assertion.match({
+          slot,
+          epoch,
+          node,
+          clock: this.clock,
+          forkConfig: this.forkConfig,
+          fork: this.forkConfig.getForkName(slot),
+        });
+
+        if (match & AssertionMatch.None || !(match & AssertionMatch.Assert)) continue;
+
         try {
           const errors = await assertion.assert({
+            fork: this.forkConfig.getForkName(slot),
             slot,
             epoch,
+            node,
             nodes: this.nodes,
             clock: this.clock,
             forkConfig: this.forkConfig,
-            store: this.stores[assertion.id],
-            // TODO: Make the store safe, to filter just the dependant stores not all
-            dependantStores: this.stores,
+            store: this.stores[assertion.id][node.beacon.id],
+            dependantStores: getStoresForAssertions(this.stores, [assertion, ...(assertion.dependencies ?? [])]),
           });
-          if (errors) {
-            for (const err of errors) {
-              this.errors.push({slot, epoch, assertionId: assertion.id, message: err});
-            }
+
+          for (const err of errors) {
+            const message = typeof err === "string" ? err : err[0];
+            const data = typeof err === "string" ? {} : {...err[1]};
+            this.errors.push({slot, epoch, assertionId: assertion.id, nodeId: node.beacon.id, message, data});
           }
         } catch (err: unknown) {
-          this.errors.push({slot, epoch, assertionId: assertion.id, message: (err as Error).message});
+          this.errors.push({
+            slot,
+            epoch,
+            nodeId: node.beacon.id,
+            assertionId: assertion.id,
+            message: (err as Error).message,
+          });
         }
-      }
-
-      if (typeof match === "object" && match.remove) {
-        this.removeAssertionQueue.push(assertion.id);
       }
     }
 
-    this.reporter.progress(slot);
-    this.processRemoveAssertionQueue();
-  }
-
-  private processRemoveAssertionQueue(): void {
-    for (const id of this.removeAssertionQueue) {
+    for (const id of removeAssertions) {
+      debug(`removing assertion slot=${slot} assertion=${id}`);
       delete this.assertionIdsMap[id];
       this.assertions = this.assertions.filter((a) => a.id !== id);
     }
-    this.removeAssertionQueue = [];
+
+    this.reporter.progress(slot);
   }
 
   private initEventStreamForNode(
@@ -336,9 +392,11 @@ export class SimulationTracker {
     ],
     signal?: AbortSignal
   ): void {
-    void node.cl.api.events.eventstream(events, signal ?? this.signal, async (event) => {
+    debug("event stream initialized for", node.beacon.id);
+    void node.beacon.api.events.eventstream(events, signal ?? this.signal, async (event) => {
       switch (event.type) {
         case routes.events.EventType.block:
+          debug(`block received node=${node.beacon.id} slot=${event.message.slot}`);
           await this.processOnBlock(event.message, node);
           return;
         case routes.events.EventType.head:

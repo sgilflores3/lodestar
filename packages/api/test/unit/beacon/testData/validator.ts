@@ -6,7 +6,9 @@ import {GenericServerTestCases} from "../../../utils/genericServerTest.js";
 const ZERO_HASH = Buffer.alloc(32, 0);
 const ZERO_HASH_HEX = "0x" + ZERO_HASH.toString("hex");
 const randaoReveal = Buffer.alloc(96, 1);
+const selectionProof = Buffer.alloc(96, 1);
 const graffiti = "a".repeat(32);
+const feeRecipient = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 export const testData: GenericServerTestCases<Api> = {
   getAttesterDuties: {
@@ -43,15 +45,15 @@ export const testData: GenericServerTestCases<Api> = {
     },
   },
   produceBlock: {
-    args: [32000, randaoReveal, graffiti],
+    args: [32000, randaoReveal, graffiti, feeRecipient],
     res: {data: ssz.phase0.BeaconBlock.defaultValue(), blockValue: ssz.Wei.defaultValue()},
   },
   produceBlockV2: {
-    args: [32000, randaoReveal, graffiti],
+    args: [32000, randaoReveal, graffiti, feeRecipient],
     res: {data: ssz.altair.BeaconBlock.defaultValue(), version: ForkName.altair, blockValue: ssz.Wei.defaultValue()},
   },
   produceBlindedBlock: {
-    args: [32000, randaoReveal, graffiti],
+    args: [32000, randaoReveal, graffiti, feeRecipient],
     res: {
       data: ssz.bellatrix.BlindedBeaconBlock.defaultValue(),
       version: ForkName.bellatrix,
@@ -90,8 +92,16 @@ export const testData: GenericServerTestCases<Api> = {
     args: [[{validatorIndex: "1", feeRecipient: "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b"}]],
     res: undefined,
   },
+  submitBeaconCommitteeSelections: {
+    args: [[]],
+    res: {data: [{validatorIndex: 1, slot: 2, selectionProof}]},
+  },
+  submitSyncCommitteeSelections: {
+    args: [[]],
+    res: {data: [{validatorIndex: 1, slot: 2, subcommitteeIndex: 3, selectionProof}]},
+  },
   getLiveness: {
-    args: [[0], 0],
+    args: [0, [0]],
     res: {data: []},
   },
   registerValidator: {

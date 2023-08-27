@@ -39,6 +39,7 @@ import {
   EpochDifference,
   AncestorResult,
   AncestorStatus,
+  ForkChoiceMetrics,
 } from "./interface.js";
 import {IForkChoiceStore, CheckpointWithHex, toCheckpointWithHex, JustifiedBalances} from "./store.js";
 
@@ -112,6 +113,17 @@ export class ForkChoice implements IForkChoice {
     this.balances = this.fcStore.justified.balances;
   }
 
+  getMetrics(): ForkChoiceMetrics {
+    return {
+      votes: this.votes.length,
+      queuedAttestations: this.queuedAttestations.size,
+      validatedAttestationDatas: this.validatedAttestationDatas.size,
+      balancesLength: this.balances.length,
+      nodes: this.protoArray.nodes.length,
+      indices: this.protoArray.indices.size,
+    };
+  }
+
   /**
    * Returns the block root of an ancestor of `blockRoot` at the given `slot`.
    * (Note: `slot` refers to the block that is *returned*, not the one that is supplied.)
@@ -174,7 +186,7 @@ export class ForkChoice implements IForkChoice {
     const oldBalances = this.balances;
     const newBalances = this.fcStore.justified.balances;
     const deltas = computeDeltas(
-      this.protoArray.indices,
+      this.protoArray.nodes.length,
       this.votes,
       oldBalances,
       newBalances,
@@ -450,6 +462,7 @@ export class ForkChoice implements IForkChoice {
       ...(isExecutionBlockBodyType(block.body) && isExecutionStateType(state) && isExecutionEnabled(state, block)
         ? {
             executionPayloadBlockHash: toHexString(block.body.executionPayload.blockHash),
+            executionPayloadNumber: block.body.executionPayload.blockNumber,
             executionStatus: this.getPostMergeExecStatus(executionStatus),
           }
         : {executionPayloadBlockHash: null, executionStatus: this.getPreMergeExecStatus(executionStatus)}),
@@ -478,7 +491,7 @@ export class ForkChoice implements IForkChoice {
    * The supplied `attestation` **must** pass the `in_valid_indexed_attestation` function as it
    * will not be run here.
    */
-  onAttestation(attestation: phase0.IndexedAttestation, attDataRoot?: string, forceImport?: boolean): void {
+  onAttestation(attestation: phase0.IndexedAttestation, attDataRoot: string, forceImport?: boolean): void {
     // Ignore any attestations to the zero hash.
     //
     // This is an edge case that results from the spec aliasing the zero hash to the genesis
@@ -542,7 +555,7 @@ export class ForkChoice implements IForkChoice {
     }
     return {
       epoch: vote.nextEpoch,
-      root: vote.nextRoot,
+      root: vote.nextIndex === null ? HEX_ZERO_HASH : this.protoArray.nodes[vote.nextIndex].blockRoot,
     };
   }
 
@@ -579,24 +592,44 @@ export class ForkChoice implements IForkChoice {
    * Returns `true` if the block is known **and** a descendant of the finalized root.
    */
   hasBlockHex(blockRoot: RootHex): boolean {
-    return this.protoArray.hasBlock(blockRoot) && this.isDescendantOfFinalized(blockRoot);
+    const node = this.protoArray.getNode(blockRoot);
+    if (node === undefined) {
+      return false;
+    }
+
+    return this.protoArray.isFinalizedRootOrDescendant(node);
   }
 
   /**
-   * Returns a `ProtoBlock` if the block is known **and** a descendant of the finalized root.
+   * Same to hasBlock but without checking if the block is a descendant of the finalized root.
+   */
+  hasBlockUnsafe(blockRoot: Root): boolean {
+    return this.hasBlockHexUnsafe(toHexString(blockRoot));
+  }
+
+  /**
+   * Same to hasBlockHex but without checking if the block is a descendant of the finalized root.
+   */
+  hasBlockHexUnsafe(blockRoot: RootHex): boolean {
+    return this.protoArray.hasBlock(blockRoot);
+  }
+
+  /**
+   * Returns a MUTABLE `ProtoBlock` if the block is known **and** a descendant of the finalized root.
    */
   getBlockHex(blockRoot: RootHex): ProtoBlock | null {
-    const block = this.protoArray.getBlock(blockRoot);
-    if (!block) {
+    const node = this.protoArray.getNode(blockRoot);
+    if (!node) {
       return null;
     }
-    // If available, use the parent_root to perform the lookup since it will involve one
-    // less lookup. This involves making the assumption that the finalized block will
-    // always have `block.parent_root` of `None`.
-    if (!this.isDescendantOfFinalized(blockRoot)) {
+
+    if (!this.protoArray.isFinalizedRootOrDescendant(node)) {
       return null;
     }
-    return block;
+
+    return {
+      ...node,
+    };
   }
 
   getJustifiedBlock(): ProtoBlock {
@@ -622,13 +655,6 @@ export class ForkChoice implements IForkChoice {
   }
 
   /**
-   * Return `true` if `block_root` is equal to the finalized root, or a known descendant of it.
-   */
-  isDescendantOfFinalized(blockRoot: RootHex): boolean {
-    return this.protoArray.isDescendant(this.fcStore.finalizedCheckpoint.rootHex, blockRoot);
-  }
-
-  /**
    * Returns true if the `descendantRoot` has an ancestor with `ancestorRoot`.
    *
    * Always returns `false` if either input roots are unknown.
@@ -638,8 +664,38 @@ export class ForkChoice implements IForkChoice {
     return this.protoArray.isDescendant(ancestorRoot, descendantRoot);
   }
 
+  /**
+   * All indices in votes are relative to proto array so always keep it up to date
+   */
   prune(finalizedRoot: RootHex): ProtoBlock[] {
-    return this.protoArray.maybePrune(finalizedRoot);
+    const prunedNodes = this.protoArray.maybePrune(finalizedRoot);
+    const prunedCount = prunedNodes.length;
+    for (let i = 0; i < this.votes.length; i++) {
+      const vote = this.votes[i];
+      // validator has never voted
+      if (vote === undefined) {
+        continue;
+      }
+
+      if (vote.currentIndex !== null) {
+        if (vote.currentIndex >= prunedCount) {
+          vote.currentIndex -= prunedCount;
+        } else {
+          // the vote was for a pruned proto node
+          vote.currentIndex = null;
+        }
+      }
+
+      if (vote.nextIndex !== null) {
+        if (vote.nextIndex >= prunedCount) {
+          vote.nextIndex -= prunedCount;
+        } else {
+          // the vote was for a pruned proto node
+          vote.nextIndex = null;
+        }
+      }
+    }
+    return prunedNodes;
   }
 
   setPruneThreshold(threshold: number): void {
@@ -682,6 +738,19 @@ export class ForkChoice implements IForkChoice {
 
     for (const block of this.protoArray.iterateAncestorNodes(this.head.blockRoot)) {
       if (block.slot === slot) {
+        return block;
+      }
+    }
+    return null;
+  }
+
+  getCanonicalBlockClosestLteSlot(slot: Slot): ProtoBlock | null {
+    if (slot >= this.head.slot) {
+      return this.head;
+    }
+
+    for (const block of this.protoArray.iterateAncestorNodes(this.head.blockRoot)) {
+      if (slot >= block.slot) {
         return block;
       }
     }
@@ -913,7 +982,7 @@ export class ForkChoice implements IForkChoice {
     slot: Slot,
     blockRootHex: string,
     targetEpoch: Epoch,
-    attDataRoot?: string,
+    attDataRoot: string,
     // forceImport attestation even if too old, mostly used in spec tests
     forceImport?: boolean
   ): void {
@@ -931,19 +1000,8 @@ export class ForkChoice implements IForkChoice {
       });
     }
 
-    const attestationData = indexedAttestation.data;
-    // AttestationData is expected to internally cache its root to make this hashTreeRoot() call free
-    const attestationCacheKey = attDataRoot ?? toHexString(ssz.phase0.AttestationData.hashTreeRoot(attestationData));
-
-    if (!this.validatedAttestationDatas.has(attestationCacheKey)) {
-      this.validateAttestationData(
-        indexedAttestation.data,
-        slot,
-        blockRootHex,
-        targetEpoch,
-        attestationCacheKey,
-        forceImport
-      );
+    if (!this.validatedAttestationDatas.has(attDataRoot)) {
+      this.validateAttestationData(indexedAttestation.data, slot, blockRootHex, targetEpoch, attDataRoot, forceImport);
     }
   }
 
@@ -952,7 +1010,7 @@ export class ForkChoice implements IForkChoice {
     slot: Slot,
     beaconBlockRootHex: string,
     targetEpoch: Epoch,
-    attestationCacheKey: string,
+    attDataRoot: string,
     // forceImport attestation even if too old, mostly used in spec tests
     forceImport?: boolean
   ): void {
@@ -1054,7 +1112,7 @@ export class ForkChoice implements IForkChoice {
       });
     }
 
-    this.validatedAttestationDatas.add(attestationCacheKey);
+    this.validatedAttestationDatas.add(attDataRoot);
   }
 
   /**
@@ -1062,14 +1120,20 @@ export class ForkChoice implements IForkChoice {
    */
   private addLatestMessage(validatorIndex: ValidatorIndex, nextEpoch: Epoch, nextRoot: RootHex): void {
     const vote = this.votes[validatorIndex];
+    // should not happen, attestation is validated before this step
+    const nextIndex = this.protoArray.indices.get(nextRoot);
+    if (nextIndex === undefined) {
+      throw new Error(`Could not find proto index for nextRoot ${nextRoot}`);
+    }
+
     if (vote === undefined) {
       this.votes[validatorIndex] = {
-        currentRoot: HEX_ZERO_HASH,
-        nextRoot,
+        currentIndex: null,
+        nextIndex,
         nextEpoch,
       };
     } else if (nextEpoch > vote.nextEpoch) {
-      vote.nextRoot = nextRoot;
+      vote.nextIndex = nextIndex;
       vote.nextEpoch = nextEpoch;
     }
     // else its an old vote, don't count it

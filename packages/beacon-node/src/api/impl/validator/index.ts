@@ -1,4 +1,5 @@
-import {routes, ServerApi} from "@lodestar/api";
+import {fromHexString, toHexString} from "@chainsafe/ssz";
+import {routes, ServerApi, BlockContents} from "@lodestar/api";
 import {
   CachedBeaconStateAllForks,
   computeStartSlotAtEpoch,
@@ -8,24 +9,31 @@ import {
   computeEpochAtSlot,
   getCurrentSlot,
 } from "@lodestar/state-transition";
-import {GENESIS_SLOT, SLOTS_PER_EPOCH, SLOTS_PER_HISTORICAL_ROOT, SYNC_COMMITTEE_SUBNET_SIZE} from "@lodestar/params";
-import {Root, Slot, ValidatorIndex, ssz, Epoch, BlockSource} from "@lodestar/types";
+import {
+  GENESIS_SLOT,
+  SLOTS_PER_EPOCH,
+  SLOTS_PER_HISTORICAL_ROOT,
+  SYNC_COMMITTEE_SUBNET_SIZE,
+  ForkSeq,
+} from "@lodestar/params";
+import {Root, Slot, ValidatorIndex, ssz, Epoch, ProducedBlockSource, bellatrix, allForks} from "@lodestar/types";
 import {ExecutionStatus} from "@lodestar/fork-choice";
 import {toHex} from "@lodestar/utils";
-import {fromHexString, toHexString} from "@chainsafe/ssz";
 import {AttestationError, AttestationErrorCode, GossipAction, SyncCommitteeError} from "../../../chain/errors/index.js";
-import {validateGossipAggregateAndProof} from "../../../chain/validation/index.js";
+import {validateApiAggregateAndProof} from "../../../chain/validation/index.js";
 import {ZERO_HASH} from "../../../constants/index.js";
 import {SyncState} from "../../../sync/index.js";
 import {isOptimisticBlock} from "../../../util/forkChoice.js";
 import {toGraffitiBuffer} from "../../../util/graffiti.js";
-import {ApiError, NodeIsSyncing} from "../errors.js";
+import {ApiError, NodeIsSyncing, OnlySupportedByDVT} from "../errors.js";
 import {validateSyncCommitteeGossipContributionAndProof} from "../../../chain/validation/syncCommitteeContributionAndProof.js";
 import {CommitteeSubscription} from "../../../network/subnets/index.js";
 import {ApiModules} from "../types.js";
 import {RegenCaller} from "../../../chain/regen/index.js";
 import {getValidatorStatus} from "../beacon/state/utils.js";
-import {validateGossipFnRetryUnknownRoot} from "../../../network/gossip/handlers/index.js";
+import {validateGossipFnRetryUnknownRoot} from "../../../network/processor/gossipHandlers.js";
+import {SCHEDULER_LOOKAHEAD_FACTOR} from "../../../chain/prepareNextSlot.js";
+import {ChainEvent, CheckpointHex} from "../../../chain/index.js";
 import {computeSubnetForCommitteesAtSlot, getPubkeysForIndices} from "./utils.js";
 
 /**
@@ -60,9 +68,10 @@ export function getValidatorApi({
   /**
    * Validator clock may be advanced from beacon's clock. If the validator requests a resource in a
    * future slot, wait some time instead of rejecting the request because it's in the future.
+   * This value is the same to MAXIMUM_GOSSIP_CLOCK_DISPARITY_SEC.
    * For very fast networks, reduce clock disparity to half a slot.
    */
-  const MAX_API_CLOCK_DISPARITY_SEC = Math.min(1, config.SECONDS_PER_SLOT / 2);
+  const MAX_API_CLOCK_DISPARITY_SEC = Math.min(0.5, config.SECONDS_PER_SLOT / 2);
   const MAX_API_CLOCK_DISPARITY_MS = MAX_API_CLOCK_DISPARITY_SEC * 1000;
 
   /** Compute and cache the genesis block root */
@@ -73,9 +82,11 @@ export function getValidatorApi({
         genesisBlockRoot = state.blockRoots.get(0);
       }
 
-      const genesisBlock = await chain.getCanonicalBlockAtSlot(GENESIS_SLOT);
-      if (genesisBlock) {
-        genesisBlockRoot = config.getForkTypes(genesisBlock.message.slot).SignedBeaconBlock.hashTreeRoot(genesisBlock);
+      const blockRes = await chain.getCanonicalBlockAtSlot(GENESIS_SLOT);
+      if (blockRes) {
+        genesisBlockRoot = config
+          .getForkTypes(blockRes.block.message.slot)
+          .SignedBeaconBlock.hashTreeRoot(blockRes.block);
       }
     }
 
@@ -110,17 +121,53 @@ export function getValidatorApi({
    * Prevents a validator from not being able to get the attestater duties correctly if the beacon and validator clocks are off
    */
   async function waitForNextClosestEpoch(): Promise<void> {
-    const nextEpoch = chain.clock.currentEpoch + 1;
-    const secPerEpoch = SLOTS_PER_EPOCH * config.SECONDS_PER_SLOT;
-    const nextEpochStartSec = chain.genesisTime + nextEpoch * secPerEpoch;
-    const msToNextEpoch = nextEpochStartSec * 1000 - Date.now();
-    if (msToNextEpoch > 0 && msToNextEpoch < MAX_API_CLOCK_DISPARITY_MS) {
+    const toNextEpochMs = msToNextEpoch();
+    if (toNextEpochMs > 0 && toNextEpochMs < MAX_API_CLOCK_DISPARITY_MS) {
+      const nextEpoch = chain.clock.currentEpoch + 1;
       await chain.clock.waitForSlot(computeStartSlotAtEpoch(nextEpoch));
     }
   }
 
+  /**
+   * Compute ms to the next epoch.
+   */
+  function msToNextEpoch(): number {
+    const nextEpoch = chain.clock.currentEpoch + 1;
+    const secPerEpoch = SLOTS_PER_EPOCH * config.SECONDS_PER_SLOT;
+    const nextEpochStartSec = chain.genesisTime + nextEpoch * secPerEpoch;
+    return nextEpochStartSec * 1000 - Date.now();
+  }
+
   function currentEpochWithDisparity(): Epoch {
     return computeEpochAtSlot(getCurrentSlot(config, chain.genesisTime - MAX_API_CLOCK_DISPARITY_SEC));
+  }
+
+  /**
+   * This function is called 1s before next epoch, usually at that time PrepareNextSlotScheduler finishes
+   * so we should have checkpoint state, otherwise wait for up to `timeoutMs`.
+   */
+  async function waitForCheckpointState(
+    cpHex: CheckpointHex,
+    timeoutMs: number
+  ): Promise<CachedBeaconStateAllForks | null> {
+    const cpState = chain.regen.getCheckpointStateSync(cpHex);
+    if (cpState) {
+      return cpState;
+    }
+    const cp = {
+      epoch: cpHex.epoch,
+      root: fromHexString(cpHex.rootHex),
+    };
+    // if not, wait for ChainEvent.checkpoint event until timeoutMs
+    return new Promise<CachedBeaconStateAllForks | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), timeoutMs);
+      chain.emitter.on(ChainEvent.checkpoint, (eventCp, cpState) => {
+        if (ssz.phase0.Checkpoint.equals(eventCp, cp)) {
+          clearTimeout(timer);
+          resolve(cpState);
+        }
+      });
+    });
   }
 
   /**
@@ -181,61 +228,59 @@ export function getValidatorApi({
 
     if (protoBeaconBlock.executionStatus === ExecutionStatus.Syncing)
       throw new NodeIsSyncing(
-        `Block's execution payload not yet validated, executionPayloadBlockHash=${protoBeaconBlock.executionPayloadBlockHash}`
+        `Block's execution payload not yet validated, executionPayloadBlockHash=${protoBeaconBlock.executionPayloadBlockHash} number=${protoBeaconBlock.executionPayloadNumber}`
       );
   }
 
-  const produceBlindedBlock: ServerApi<routes.validator.Api>["produceBlindedBlock"] = async function produceBlindedBlock(
+  const produceBlindedBlock: ServerApi<routes.validator.Api>["produceBlindedBlock"] =
+    async function produceBlindedBlock(slot, randaoReveal, graffiti) {
+      const source = ProducedBlockSource.builder;
+      let timer;
+      metrics?.blockProductionRequests.inc({source});
+      try {
+        notWhileSyncing();
+        await waitForSlot(slot); // Must never request for a future slot > currentSlot
+
+        // Error early for builder if builder flow not active
+        if (!chain.executionBuilder) {
+          throw Error("Execution builder not set");
+        }
+        if (!chain.executionBuilder.status) {
+          throw Error("Execution builder disabled");
+        }
+
+        // Process the queued attestations in the forkchoice for correct head estimation
+        // forkChoice.updateTime() might have already been called by the onSlot clock
+        // handler, in which case this should just return.
+        chain.forkChoice.updateTime(slot);
+        chain.forkChoice.updateHead();
+
+        timer = metrics?.blockProductionTime.startTimer();
+        const {block, blockValue} = await chain.produceBlindedBlock({
+          slot,
+          randaoReveal,
+          graffiti: toGraffitiBuffer(graffiti || ""),
+        });
+        metrics?.blockProductionSuccess.inc({source});
+        metrics?.blockProductionNumAggregated.observe({source}, block.body.attestations.length);
+        logger.verbose("Produced blinded block", {
+          slot,
+          blockValue,
+          root: toHexString(config.getBlindedForkTypes(slot).BeaconBlock.hashTreeRoot(block)),
+        });
+        return {data: block, version: config.getForkName(block.slot), blockValue};
+      } finally {
+        if (timer) timer({source});
+      }
+    };
+
+  const produceBlockV2: ServerApi<routes.validator.Api>["produceBlockV2"] = async function produceBlockV2(
     slot,
     randaoReveal,
-    graffiti
+    graffiti,
+    feeRecipient
   ) {
-    const source = BlockSource.builder;
-    let timer;
-    metrics?.blockProductionRequests.inc({source});
-    try {
-      notWhileSyncing();
-      await waitForSlot(slot); // Must never request for a future slot > currentSlot
-
-      // Error early for builder if builder flow not active
-      if (!chain.executionBuilder) {
-        throw Error("Execution builder not set");
-      }
-      if (!chain.executionBuilder.status) {
-        throw Error("Execution builder disabled");
-      }
-
-      // Process the queued attestations in the forkchoice for correct head estimation
-      // forkChoice.updateTime() might have already been called by the onSlot clock
-      // handler, in which case this should just return.
-      chain.forkChoice.updateTime(slot);
-      chain.forkChoice.updateHead();
-
-      timer = metrics?.blockProductionTime.startTimer();
-      const {block, blockValue} = await chain.produceBlindedBlock({
-        slot,
-        randaoReveal,
-        graffiti: toGraffitiBuffer(graffiti || ""),
-      });
-      metrics?.blockProductionSuccess.inc({source});
-      metrics?.blockProductionNumAggregated.observe({source}, block.body.attestations.length);
-      logger.verbose("Produced blinded block", {
-        slot,
-        blockValue,
-        root: toHexString(config.getBlindedForkTypes(slot).BeaconBlock.hashTreeRoot(block)),
-      });
-      return {data: block, version: config.getForkName(block.slot), blockValue};
-    } finally {
-      if (timer) timer({source});
-    }
-  };
-
-  const produceBlock: ServerApi<routes.validator.Api>["produceBlockV2"] = async function produceBlock(
-    slot,
-    randaoReveal,
-    graffiti
-  ) {
-    const source = BlockSource.engine;
+    const source = ProducedBlockSource.engine;
     let timer;
     metrics?.blockProductionRequests.inc({source});
     try {
@@ -253,6 +298,7 @@ export function getValidatorApi({
         slot,
         randaoReveal,
         graffiti: toGraffitiBuffer(graffiti || ""),
+        feeRecipient,
       });
       metrics?.blockProductionSuccess.inc({source});
       metrics?.blockProductionNumAggregated.observe({source}, block.body.attestations.length);
@@ -261,15 +307,38 @@ export function getValidatorApi({
         blockValue,
         root: toHexString(config.getForkTypes(slot).BeaconBlock.hashTreeRoot(block)),
       });
-      return {data: block, version: config.getForkName(block.slot), blockValue};
+      const version = config.getForkName(block.slot);
+      if (ForkSeq[version] < ForkSeq.deneb) {
+        return {data: block, version, blockValue};
+      } else {
+        const blockHash = toHex((block as bellatrix.BeaconBlock).body.executionPayload.blockHash);
+        const {blobSidecars} = chain.producedBlobSidecarsCache.get(blockHash) ?? {};
+        if (blobSidecars === undefined) {
+          throw Error("blobSidecars missing in cache");
+        }
+        return {data: {block, blobSidecars} as BlockContents, version, blockValue};
+      }
     } finally {
       if (timer) timer({source});
     }
   };
 
+  const produceBlock: ServerApi<routes.validator.Api>["produceBlock"] = async function produceBlock(
+    slot,
+    randaoReveal,
+    graffiti
+  ) {
+    const {data, version, blockValue} = await produceBlockV2(slot, randaoReveal, graffiti, undefined);
+    if ((data as BlockContents).block !== undefined) {
+      throw Error(`Invalid block contents for produceBlock at fork=${version}`);
+    } else {
+      return {data: data as allForks.BeaconBlock, version, blockValue};
+    }
+  };
+
   return {
     produceBlock: produceBlock,
-    produceBlockV2: produceBlock,
+    produceBlockV2: produceBlockV2,
     produceBlindedBlock,
 
     async produceAttestationData(committeeIndex, slot) {
@@ -282,7 +351,6 @@ export function getValidatorApi({
       const headState = chain.getHeadState();
       const headSlot = headState.slot;
       const attEpoch = computeEpochAtSlot(slot);
-      const headEpoch = computeEpochAtSlot(headSlot);
       const headBlockRootHex = chain.forkChoice.getHead().blockRoot;
       const headBlockRoot = fromHexString(headBlockRootHex);
 
@@ -307,16 +375,7 @@ export function getValidatorApi({
 
       // To get the correct source we must get a state in the same epoch as the attestation's epoch.
       // An epoch transition may change state.currentJustifiedCheckpoint
-      const attEpochState =
-        attEpoch <= headEpoch
-          ? headState
-          : // Will advance the state to the correct next epoch if necessary
-            await chain.regen.getBlockSlotState(
-              headBlockRootHex,
-              slot,
-              {dontTransferCache: true},
-              RegenCaller.produceAttestationData
-            );
+      const attEpochState = await chain.getHeadStateAtEpoch(attEpoch, RegenCaller.produceAttestationData);
 
       return {
         data: {
@@ -344,9 +403,11 @@ export function getValidatorApi({
       // when a validator is configured with multiple beacon node urls, this beaconBlockRoot may come from another beacon node
       // and it hasn't been in our forkchoice since we haven't seen / processing that block
       // see https://github.com/ChainSafe/lodestar/issues/5063
-      if (!chain.forkChoice.getBlock(beaconBlockRoot)) {
+      if (!chain.forkChoice.hasBlock(beaconBlockRoot)) {
+        const rootHex = toHexString(beaconBlockRoot);
+        network.searchUnknownSlotRoot({slot, root: rootHex});
         // if result of this call is false, i.e. block hasn't seen after 1 slot then the below notOnOptimisticBlockRoot call will throw error
-        await chain.waitForBlock(slot, toHexString(beaconBlockRoot));
+        await chain.waitForBlock(slot, rootHex);
       }
 
       // Check the execution status as validator shouldn't contribute on an optimistic head
@@ -354,6 +415,11 @@ export function getValidatorApi({
 
       const contribution = chain.syncCommitteeMessagePool.getContribution(subcommitteeIndex, slot, beaconBlockRoot);
       if (!contribution) throw new ApiError(500, "No contribution available");
+
+      metrics?.production.producedSyncContributionParticipants.observe(
+        contribution.aggregationBits.getTrueBitIndexes().length
+      );
+
       return {data: contribution};
     },
 
@@ -362,15 +428,32 @@ export function getValidatorApi({
 
       // Early check that epoch is within [current_epoch, current_epoch + 1], or allow for pre-genesis
       const currentEpoch = currentEpochWithDisparity();
-      if (currentEpoch >= 0 && epoch !== currentEpoch && epoch !== currentEpoch + 1) {
-        throw Error(`Requested epoch ${epoch} must equal current ${currentEpoch} or next epoch ${currentEpoch + 1}`);
+      const nextEpoch = currentEpoch + 1;
+      if (currentEpoch >= 0 && epoch !== currentEpoch && epoch !== nextEpoch) {
+        throw Error(`Requested epoch ${epoch} must equal current ${currentEpoch} or next epoch ${nextEpoch}`);
       }
 
-      // May request for an epoch that's in the future, for getBeaconProposersNextEpoch()
-      await waitForNextClosestEpoch();
-
       const head = chain.forkChoice.getHead();
-      const state = await chain.getHeadStateAtCurrentEpoch();
+      let state: CachedBeaconStateAllForks | undefined = undefined;
+      const slotMs = config.SECONDS_PER_SLOT * 1000;
+      const prepareNextSlotLookAheadMs = slotMs / SCHEDULER_LOOKAHEAD_FACTOR;
+      const toNextEpochMs = msToNextEpoch();
+      // validators may request next epoch's duties when it's close to next epoch
+      // this is to avoid missed block proposal due to 0 epoch look ahead
+      if (epoch === nextEpoch && toNextEpochMs < prepareNextSlotLookAheadMs) {
+        // wait for maximum 1 slot for cp state which is the timeout of validator api
+        const cpState = await waitForCheckpointState({rootHex: head.blockRoot, epoch}, slotMs);
+        if (cpState) {
+          state = cpState;
+          metrics?.duties.requestNextEpochProposalDutiesHit.inc();
+        } else {
+          metrics?.duties.requestNextEpochProposalDutiesMiss.inc();
+        }
+      }
+
+      if (!state) {
+        state = await chain.getHeadStateAtCurrentEpoch(RegenCaller.getDuties);
+      }
 
       const stateEpoch = state.epochCtx.epoch;
       let indexes: ValidatorIndex[] = [];
@@ -426,7 +509,7 @@ export function getValidatorApi({
       }
 
       const head = chain.forkChoice.getHead();
-      const state = await chain.getHeadStateAtCurrentEpoch();
+      const state = await chain.getHeadStateAtCurrentEpoch(RegenCaller.getDuties);
 
       // TODO: Determine what the current epoch would be if we fast-forward our system clock by
       // `MAXIMUM_GOSSIP_CLOCK_DISPARITY`.
@@ -518,8 +601,11 @@ export function getValidatorApi({
 
       await waitForSlot(slot); // Must never request for a future slot > currentSlot
 
+      const aggregate = chain.attestationPool.getAggregate(slot, attestationDataRoot);
+      metrics?.production.producedAggregateParticipants.observe(aggregate.aggregationBits.getTrueBitIndexes().length);
+
       return {
-        data: chain.attestationPool.getAggregate(slot, attestationDataRoot),
+        data: aggregate,
       };
     },
 
@@ -528,24 +614,21 @@ export function getValidatorApi({
 
       const seenTimestampSec = Date.now() / 1000;
       const errors: Error[] = [];
+      const fork = chain.config.getForkName(chain.clock.currentSlot);
 
       await Promise.all(
         signedAggregateAndProofs.map(async (signedAggregateAndProof, i) => {
           try {
             // TODO: Validate in batch
             // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-            const validateFn = () =>
-              validateGossipAggregateAndProof(
-                chain,
-                signedAggregateAndProof,
-                true // skip known attesters check
-              );
+            const validateFn = () => validateApiAggregateAndProof(fork, chain, signedAggregateAndProof);
             const {slot, beaconBlockRoot} = signedAggregateAndProof.message.aggregate.data;
             // when a validator is configured with multiple beacon node urls, this attestation may come from another beacon node
             // and the block hasn't been in our forkchoice since we haven't seen / processing that block
             // see https://github.com/ChainSafe/lodestar/issues/5098
-            const {indexedAttestation, committeeIndices} = await validateGossipFnRetryUnknownRoot(
+            const {indexedAttestation, committeeIndices, attDataRootHex} = await validateGossipFnRetryUnknownRoot(
               validateFn,
+              network,
               chain,
               slot,
               beaconBlockRoot
@@ -553,11 +636,12 @@ export function getValidatorApi({
 
             chain.aggregatedAttestationPool.add(
               signedAggregateAndProof.message.aggregate,
+              attDataRootHex,
               indexedAttestation.attestingIndices.length,
               committeeIndices
             );
-            const sentPeers = await network.gossip.publishBeaconAggregateAndProof(signedAggregateAndProof);
-            metrics?.submitAggregatedAttestation(seenTimestampSec, indexedAttestation, sentPeers);
+            const sentPeers = await network.publishBeaconAggregateAndProof(signedAggregateAndProof);
+            metrics?.onPoolSubmitAggregatedAttestation(seenTimestampSec, indexedAttestation, sentPeers);
           } catch (e) {
             if (e instanceof AttestationError && e.type.code === AttestationErrorCode.AGGREGATOR_ALREADY_KNOWN) {
               logger.debug("Ignoring known signedAggregateAndProof");
@@ -612,7 +696,7 @@ export function getValidatorApi({
               contributionAndProof.message,
               syncCommitteeParticipantIndices.length
             );
-            await network.gossip.publishContributionAndProof(contributionAndProof);
+            await network.publishContributionAndProof(contributionAndProof);
           } catch (e) {
             errors.push(e as Error);
             logger.error(
@@ -640,7 +724,7 @@ export function getValidatorApi({
     async prepareBeaconCommitteeSubnet(subscriptions) {
       notWhileSyncing();
 
-      await network.prepareBeaconCommitteeSubnet(
+      await network.prepareBeaconCommitteeSubnets(
         subscriptions.map(({validatorIndex, slot, isAggregator, committeesAtSlot, committeeIndex}) => ({
           validatorIndex: validatorIndex,
           subnet: computeSubnetForCommitteesAtSlot(slot, committeesAtSlot, committeeIndex),
@@ -701,23 +785,31 @@ export function getValidatorApi({
       await chain.updateBeaconProposerData(chain.clock.currentEpoch, proposers);
     },
 
-    async getLiveness(indices: ValidatorIndex[], epoch: Epoch) {
-      if (indices.length === 0) {
+    async submitBeaconCommitteeSelections() {
+      throw new OnlySupportedByDVT();
+    },
+
+    async submitSyncCommitteeSelections() {
+      throw new OnlySupportedByDVT();
+    },
+
+    async getLiveness(epoch, validatorIndices) {
+      if (validatorIndices.length === 0) {
         return {
           data: [],
         };
       }
       const currentEpoch = chain.clock.currentEpoch;
       if (epoch < currentEpoch - 1 || epoch > currentEpoch + 1) {
-        throw new Error(
+        throw new ApiError(
+          400,
           `Request epoch ${epoch} is more than one epoch before or after the current epoch ${currentEpoch}`
         );
       }
 
       return {
-        data: indices.map((index: ValidatorIndex) => ({
+        data: validatorIndices.map((index) => ({
           index,
-          epoch,
           isLive: chain.validatorSeenAtEpoch(index, epoch),
         })),
       };

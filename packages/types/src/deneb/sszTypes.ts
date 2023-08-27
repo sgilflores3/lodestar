@@ -1,9 +1,10 @@
 import {ContainerType, ListCompositeType, ByteVectorType, VectorCompositeType} from "@chainsafe/ssz";
 import {
   HISTORICAL_ROOTS_LIMIT,
+  MAX_BLOB_COMMITMENTS_PER_BLOCK,
   FIELD_ELEMENTS_PER_BLOB,
   MAX_BLOBS_PER_BLOCK,
-  MAX_REQUEST_BLOCKS,
+  MAX_REQUEST_BLOB_SIDECARS,
   BYTES_PER_FIELD_ELEMENT,
   BLOCK_BODY_EXECUTION_PAYLOAD_DEPTH as EXECUTION_PAYLOAD_DEPTH,
   EPOCHS_PER_SYNC_COMMITTEE_PERIOD,
@@ -12,9 +13,23 @@ import {
 import {ssz as primitiveSsz} from "../primitive/index.js";
 import {ssz as phase0Ssz} from "../phase0/index.js";
 import {ssz as altairSsz} from "../altair/index.js";
+import {ssz as bellatrixSsz} from "../bellatrix/index.js";
 import {ssz as capellaSsz} from "../capella/index.js";
 
-const {UintNum64, Slot, Root, BLSSignature, UintBn256, Bytes32, Bytes48, Bytes96, BLSPubkey} = primitiveSsz;
+const {
+  UintNum64,
+  Slot,
+  Root,
+  BLSSignature,
+  UintBn64,
+  UintBn256,
+  Bytes32,
+  Bytes48,
+  Bytes96,
+  BLSPubkey,
+  BlobIndex,
+  ValidatorIndex,
+} = primitiveSsz;
 
 // Polynomial commitments
 // https://github.com/ethereum/consensus-specs/blob/dev/specs/eip4844/polynomial-commitments.md
@@ -34,8 +49,12 @@ export const KZGProof = Bytes48;
 
 export const Blob = new ByteVectorType(BYTES_PER_FIELD_ELEMENT * FIELD_ELEMENTS_PER_BLOB);
 export const Blobs = new ListCompositeType(Blob, MAX_BLOBS_PER_BLOCK);
+export const BlindedBlob = Bytes32;
+export const BlindedBlobs = new ListCompositeType(BlindedBlob, MAX_BLOBS_PER_BLOCK);
+
 export const VersionedHash = Bytes32;
-export const BlobKzgCommitments = new ListCompositeType(KZGCommitment, MAX_BLOBS_PER_BLOCK);
+export const BlobKzgCommitments = new ListCompositeType(KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK);
+export const KZGProofs = new ListCompositeType(KZGProof, MAX_BLOBS_PER_BLOCK);
 
 // Constants
 
@@ -70,15 +89,23 @@ export const PolynomialAndCommitment = new ContainerType(
 // ReqResp types
 // =============
 
-export const BlobsSidecarsByRangeRequest = new ContainerType(
+export const BlobSidecarsByRangeRequest = new ContainerType(
   {
     startSlot: Slot,
     count: UintNum64,
   },
-  {typeName: "BlobsSidecarsByRangeRequest", jsonCase: "eth2"}
+  {typeName: "BlobSidecarsByRangeRequest", jsonCase: "eth2"}
 );
 
-export const BeaconBlockAndBlobsSidecarByRootRequest = new ListCompositeType(Root, MAX_REQUEST_BLOCKS);
+export const BlobIdentifier = new ContainerType(
+  {
+    blockRoot: Root,
+    index: BlobIndex,
+  },
+  {typeName: "BlobIdentifier", jsonCase: "eth2"}
+);
+
+export const BlobSidecarsByRootRequest = new ListCompositeType(BlobIdentifier, MAX_REQUEST_BLOB_SIDECARS);
 
 // Beacon Chain types
 // https://github.com/ethereum/consensus-specs/blob/dev/specs/eip4844/beacon-chain.md#containers
@@ -86,7 +113,8 @@ export const BeaconBlockAndBlobsSidecarByRootRequest = new ListCompositeType(Roo
 export const ExecutionPayload = new ContainerType(
   {
     ...capellaSsz.ExecutionPayload.fields,
-    excessDataGas: UintBn256, // New in DENEB
+    blobGasUsed: UintBn64, // New in DENEB
+    excessBlobGas: UintBn64, // New in DENEB
   },
   {typeName: "ExecutionPayload", jsonCase: "eth2"}
 );
@@ -94,7 +122,8 @@ export const ExecutionPayload = new ContainerType(
 export const ExecutionPayloadHeader = new ContainerType(
   {
     ...capellaSsz.ExecutionPayloadHeader.fields,
-    excessDataGas: UintBn256, // New in DENEB
+    blobGasUsed: UintBn64, // New in DENEB
+    excessBlobGas: UintBn64, // New in DENEB
   },
   {typeName: "ExecutionPayloadHeader", jsonCase: "eth2"}
 );
@@ -126,28 +155,72 @@ export const SignedBeaconBlock = new ContainerType(
   {typeName: "SignedBeaconBlock", jsonCase: "eth2"}
 );
 
-export const BlobsSidecar = new ContainerType(
+export const BlobSidecar = new ContainerType(
   {
-    beaconBlockRoot: Root,
-    beaconBlockSlot: Slot,
-    blobs: Blobs,
-    kzgAggregatedProof: KZGProof,
+    blockRoot: Root,
+    index: BlobIndex,
+    slot: Slot,
+    blockParentRoot: Root,
+    proposerIndex: ValidatorIndex,
+    blob: Blob,
+    kzgCommitment: KZGCommitment,
+    kzgProof: KZGProof,
   },
-  {typeName: "BlobsSidecar", jsonCase: "eth2"}
+  {typeName: "BlobSidecar", jsonCase: "eth2"}
 );
 
-export const SignedBeaconBlockAndBlobsSidecar = new ContainerType(
+export const BlobSidecars = new ListCompositeType(BlobSidecar, MAX_BLOBS_PER_BLOCK);
+
+export const SignedBlobSidecar = new ContainerType(
+  {
+    message: BlobSidecar,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedBlobSidecar", jsonCase: "eth2"}
+);
+export const SignedBlobSidecars = new ListCompositeType(SignedBlobSidecar, MAX_BLOBS_PER_BLOCK);
+
+export const BlindedBlobSidecar = new ContainerType(
+  {
+    blockRoot: Root,
+    index: BlobIndex,
+    slot: Slot,
+    blockParentRoot: Root,
+    proposerIndex: ValidatorIndex,
+    blobRoot: BlindedBlob,
+    kzgCommitment: KZGCommitment,
+    kzgProof: KZGProof,
+  },
+  {typeName: "BlindedBlobSidecar", jsonCase: "eth2"}
+);
+
+export const BlindedBlobSidecars = new ListCompositeType(BlindedBlobSidecar, MAX_BLOBS_PER_BLOCK);
+
+export const SignedBlindedBlobSidecar = new ContainerType(
+  {
+    message: BlindedBlobSidecar,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedBlindedBlobSidecar", jsonCase: "eth2"}
+);
+
+export const SignedBlindedBlobSidecars = new ListCompositeType(SignedBlindedBlobSidecar, MAX_BLOBS_PER_BLOCK);
+
+// TODO: deneb cleanup once the builder-api gets rectified for deneb
+// as the type might be used in builder getHeader responses
+export const SignedBeaconBlockAndBlobSidecars = new ContainerType(
   {
     beaconBlock: SignedBeaconBlock,
-    blobsSidecar: BlobsSidecar,
+    blobSidecars: BlobSidecars,
   },
-  {typeName: "SignedBeaconBlockAndBlobsSidecar", jsonCase: "eth2"}
+  {typeName: "SignedBeaconBlockAndBlobSidecars", jsonCase: "eth2"}
 );
 
 export const BlindedBeaconBlockBody = new ContainerType(
   {
-    ...BeaconBlockBody.fields,
+    ...altairSsz.BeaconBlockBody.fields,
     executionPayloadHeader: ExecutionPayloadHeader, // Modified in DENEB
+    blsToExecutionChanges: capellaSsz.BeaconBlockBody.fields.blsToExecutionChanges,
     blobKzgCommitments: BlobKzgCommitments, // New in DENEB
   },
   {typeName: "BlindedBeaconBlockBody", jsonCase: "eth2", cachePermanentRootStruct: true}
@@ -292,4 +365,21 @@ export const LightClientStore = new ContainerType(
     validUpdates: new ListCompositeType(LightClientUpdate, EPOCHS_PER_SYNC_COMMITTEE_PERIOD * SLOTS_PER_EPOCH),
   },
   {typeName: "LightClientStore", jsonCase: "eth2"}
+);
+
+// PayloadAttributes primarily for SSE event
+export const PayloadAttributes = new ContainerType(
+  {
+    ...capellaSsz.PayloadAttributes.fields,
+    parentBeaconBlockRoot: Root,
+  },
+  {typeName: "PayloadAttributes", jsonCase: "eth2"}
+);
+
+export const SSEPayloadAttributes = new ContainerType(
+  {
+    ...bellatrixSsz.SSEPayloadAttributesCommon.fields,
+    payloadAttributes: PayloadAttributes,
+  },
+  {typeName: "SSEPayloadAttributes", jsonCase: "eth2"}
 );

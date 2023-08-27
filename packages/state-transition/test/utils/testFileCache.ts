@@ -104,7 +104,10 @@ async function downloadTestFile(fileId: string): Promise<Buffer> {
   // eslint-disable-next-line no-console
   console.log(`Downloading file ${fileUrl}`);
 
-  const res = await got(fileUrl, {responseType: "buffer"});
+  const res = await got(fileUrl, {responseType: "buffer"}).catch((e: Error) => {
+    e.message = `Error downloading ${fileUrl}: ${e.message}`;
+    throw e;
+  });
   return res.body;
 }
 
@@ -113,7 +116,7 @@ async function tryEach<T>(promises: (() => Promise<T>)[]): Promise<T> {
 
   for (let i = 0; i < promises.length; i++) {
     try {
-      return promises[i]();
+      return await promises[i]();
     } catch (e) {
       errors.push(e as Error);
     }

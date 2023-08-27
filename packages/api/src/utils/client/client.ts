@@ -1,8 +1,9 @@
-import {mapValues} from "@lodestar/utils";
+import {TimeoutError, mapValues} from "@lodestar/utils";
 import {compileRouteUrlFormater} from "../urlFormat.js";
 import {RouteDef, ReqGeneric, ReturnTypes, TypeJson, ReqSerializer, ReqSerializers, RoutesData} from "../types.js";
 import {APIClientHandler} from "../../interfaces.js";
 import {FetchOpts, HttpError, IHttpClient} from "./httpClient.js";
+import {HttpStatusCode} from "./httpStatusCode.js";
 
 // See /packages/api/src/routes/index.ts for reasoning
 
@@ -23,9 +24,9 @@ export function getFetchOptsSerializer<Fn extends (...args: any) => any, ReqType
   return function getFetchOpts(...args: Parameters<Fn>): FetchOpts {
     const req = reqSerializer.writeReq(...args);
     return {
-      url: urlFormater(req.params || {}),
+      url: urlFormater(req.params ?? {}),
       method: routeDef.method,
-      query: req.query,
+      query: Object.keys(req.query ?? {}).length ? req.query : undefined,
       body: req.body as unknown,
       headers: req.headers,
       routeId,
@@ -39,7 +40,7 @@ export function getFetchOptsSerializer<Fn extends (...args: any) => any, ReqType
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function getFetchOptsSerializers<
   Api extends Record<string, APIClientHandler>,
-  ReqTypes extends {[K in keyof Api]: ReqGeneric}
+  ReqTypes extends {[K in keyof Api]: ReqGeneric},
 >(routesData: RoutesData<Api>, reqSerializers: ReqSerializers<Api, ReqTypes>) {
   return mapValues(routesData, (routeDef, routeId) =>
     getFetchOptsSerializer(routeDef, reqSerializers[routeId], routeId as string)
@@ -51,14 +52,14 @@ export function getFetchOptsSerializers<
  */
 export function generateGenericJsonClient<
   Api extends Record<string, APIClientHandler>,
-  ReqTypes extends {[K in keyof Api]: ReqGeneric}
+  ReqTypes extends {[K in keyof Api]: ReqGeneric},
 >(
   routesData: RoutesData<Api>,
   reqSerializers: ReqSerializers<Api, ReqTypes>,
   returnTypes: ReturnTypes<Api>,
   fetchFn: IHttpClient
 ): Api {
-  return (mapValues(routesData, (routeDef, routeId) => {
+  return mapValues(routesData, (routeDef, routeId) => {
     const fetchOptsSerializer = getFetchOptsSerializer(routeDef, reqSerializers[routeId], routeId as string);
     const returnType = returnTypes[routeId as keyof ReturnTypes<Api>] as TypeJson<any> | null;
 
@@ -66,7 +67,7 @@ export function generateGenericJsonClient<
       try {
         if (returnType) {
           const res = await fetchFn.json<unknown>(fetchOptsSerializer(...args));
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/return-await
           return {ok: true, response: returnType.fromJson(res.body), status: res.status} as ReturnType<Api[keyof Api]>;
         } else {
           // We need to avoid parsing the response as the servers might just
@@ -74,17 +75,28 @@ export function generateGenericJsonClient<
           // empty json response. We return the status code.
           const res = await fetchFn.request(fetchOptsSerializer(...args));
 
+          // eslint-disable-next-line @typescript-eslint/return-await
           return {ok: true, response: undefined, status: res.status} as ReturnType<Api[keyof Api]>;
         }
       } catch (err) {
         if (err instanceof HttpError) {
-          return {ok: false, error: {code: err.status, message: err.message, operationId: routeId}} as ReturnType<
-            Api[keyof Api]
-          >;
+          return {
+            ok: false,
+            status: err.status,
+            error: {code: err.status, message: err.message, operationId: routeId},
+          } as ReturnType<Api[keyof Api]>;
+        }
+
+        if (err instanceof TimeoutError) {
+          return {
+            ok: false,
+            status: HttpStatusCode.INTERNAL_SERVER_ERROR,
+            error: {code: HttpStatusCode.INTERNAL_SERVER_ERROR, message: err.message, operationId: routeId},
+          } as ReturnType<Api[keyof Api]>;
         }
 
         throw err;
       }
     };
-  }) as unknown) as Api;
+  }) as unknown as Api;
 }

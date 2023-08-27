@@ -1,8 +1,5 @@
-// Uses cross-fetch for browser + NodeJS cross compatibility
-// Note: isomorphic-fetch is not well mantained and does not support abort signals
-import fetch from "cross-fetch";
-
-import {ErrorAborted, TimeoutError, retry} from "@lodestar/utils";
+import {fetch} from "@lodestar/api";
+import {ErrorAborted, TimeoutError, isValidHttpUrl, retry} from "@lodestar/utils";
 import {IGauge, IHistogram} from "../../metrics/interface.js";
 import {IJson, RpcPayload} from "../interface.js";
 import {encodeJwtToken} from "./jwt.js";
@@ -94,6 +91,9 @@ export class JsonRpcHttpClient implements IJsonRpcHttpClient {
     for (const [i, url] of urls.entries()) {
       if (!url) {
         throw Error(`JsonRpcHttpClient.urls[${i}] is empty or undefined: ${url}`);
+      }
+      if (!isValidHttpUrl(url)) {
+        throw Error(`JsonRpcHttpClient.urls[${i}] must be a valid URL: ${url}`);
       }
     }
 
@@ -191,13 +191,6 @@ export class JsonRpcHttpClient implements IJsonRpcHttpClient {
    * Fetches JSON and throws detailed errors in case the HTTP request is not ok
    */
   private async fetchJsonOneUrl<R, T = unknown>(url: string, json: T, opts?: ReqOpts): Promise<R> {
-    // If url is undefined node-fetch throws with `TypeError: Only absolute URLs are supported`
-    // Throw a better error instead
-    if (!url) throw Error(`Empty or undefined JSON RPC HTTP client url: ${url}`);
-
-    // fetch() throws for network errors:
-    // - request to http://missing-url.com/ failed, reason: getaddrinfo ENOTFOUND missing-url.com
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), opts?.timeout ?? this.opts?.timeout ?? REQUEST_TIMEOUT);
 
@@ -317,7 +310,10 @@ export class ErrorJsonRpcResponse extends Error {
 
 /** JSON RPC endpoint returned status code != 200 */
 export class HttpRpcError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
     super(message);
   }
 }

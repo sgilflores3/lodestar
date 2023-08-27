@@ -1,4 +1,4 @@
-import {Epoch, Slot, RootHex} from "@lodestar/types";
+import {Epoch, Slot, RootHex, UintNum64} from "@lodestar/types";
 
 // RootHex is a root as a hex string
 // Used for lightweight and easy comparison
@@ -6,10 +6,12 @@ export const HEX_ZERO_HASH = "0x000000000000000000000000000000000000000000000000
 
 /**
  * Simplified 'latest message' with previous message
+ * The index is relative to ProtoArray indices
  */
 export type VoteTracker = {
-  currentRoot: RootHex;
-  nextRoot: RootHex;
+  currentIndex: number | null;
+  // if a vode is out of date (the voted index was in the past while proto array is pruned), it will be set to null
+  nextIndex: number | null;
   nextEpoch: Epoch;
 };
 
@@ -34,7 +36,11 @@ export type LVHExecResponse = LVHValidResponse | LVHInvalidResponse;
 export type MaybeValidExecutionStatus = Exclude<ExecutionStatus, ExecutionStatus.Invalid>;
 
 export type BlockExecution =
-  | {executionPayloadBlockHash: RootHex; executionStatus: Exclude<ExecutionStatus, ExecutionStatus.PreMerge>}
+  | {
+      executionPayloadBlockHash: RootHex;
+      executionPayloadNumber: UintNum64;
+      executionStatus: Exclude<ExecutionStatus, ExecutionStatus.PreMerge>;
+    }
   | {executionPayloadBlockHash: null; executionStatus: ExecutionStatus.PreMerge};
 /**
  * A block that is to be applied to the fork choice

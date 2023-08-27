@@ -25,36 +25,41 @@ You can run any of npm task prefixed with `test:sim:*`. There are different scen
 | Lighthouse | LIGHTHOUSE_DOCKER_IMAGE | Similar to other clients use it to set Lighouse docker image. Make use you use `-dev` suffixed image tags as these are the only one supporting `minimal` preset.                                                      |
 | Lighthouse | LIGHTHOUSE_BINARY_PATH  | Use local compiled binary. Make sure it's compiled with the `minimal` spec enabled.                                                                                                                                   |
 
+### Enable Metics for the sim tests
+
+To enable metrics for the SIM tests you can set `SIM_METRIC_SERVER_URL` environment variable with the host and port e.g. `127.0.0.1:4000`.
+
 ## Architecture
 
 Based on the parameters passed to `SimulationEnvironment.initWithDefaults` the following directory structure is created by the `SimulationEnvironment` and passed relevant directories to the individual client generators. For understanding we call this process as bootstrapping.
 
 ```bash
-# Here multi-fork is the simulation id 
+# Here multi-fork is the simulation id
+# The `client` suffixed `beacon_`, `validator_` or `execution_`
 /tmp/random-directory/multi-fork
   /node-1
-    /cl-${client}
+    /${client}
       genesis.ssz
       jwtsecret.txt
       /validators
-        # Contains all validators definition with relative path 
+        # Contains all validators definition with relative path
         validator_definitions.yml
-        /secrets 
+        /secrets
           # Public key prefixed password for keystore decrypiton
           0x18302981aadffccc123313.txt
         /keystores
           # Public key prefixed with 0x, EIP-2335 keystore file
           0x18302981aadffccc123313.json
-    /el-${client}
+    /${client}
       genesis.json
       jwtsecret.txt
 
 # Here multi-fork is the simulation id
 $logsDir/multi-fork/
   docker_runner.log
-  node-1-cl-${client}.log
-  node-1-cl-${client}-validator.log
-  node-1-el-${client}.log
+  node-1-${client}.log
+  node-1-${client}.log
+  node-1-${client}.log
 ```
 
 ### Running a client in docker
@@ -67,5 +72,4 @@ The above directories structure for individual client will be passed to the gene
 
 1. The jobs are executed on host machine, so job `bootstrap` and `teardown` actions should be using real paths not the mounted ones.
 2. Similarly `health` endpoint for reach job also execute on the host machine, so it should use `127.0.0.1` or `localhost`.
-3. If there is a specific port required to expose from the docker job, must specify in the job options. 
-
+3. If there is a specific port required to expose from the docker job, must specify in the job options.

@@ -37,8 +37,19 @@ export type AncestorResult =
   | {code: AncestorStatus.NoCommonAncenstor}
   | {code: AncestorStatus.BlockUnknown};
 
+export type ForkChoiceMetrics = {
+  votes: number;
+  queuedAttestations: number;
+  validatedAttestationDatas: number;
+  balancesLength: number;
+  nodes: number;
+  indices: number;
+};
+
 export interface IForkChoice {
   irrecoverableError?: Error;
+
+  getMetrics(): ForkChoiceMetrics;
   /**
    * Returns the block root of an ancestor of `block_root` at the given `slot`. (Note: `slot` refers
    * to the block that is *returned*, not the one that is supplied.)
@@ -113,7 +124,7 @@ export interface IForkChoice {
    * The supplied `attestation` **must** pass the `in_valid_indexed_attestation` function as it
    * will not be run here.
    */
-  onAttestation(attestation: phase0.IndexedAttestation, attDataRoot?: string, forceImport?: boolean): void;
+  onAttestation(attestation: phase0.IndexedAttestation, attDataRoot: string, forceImport?: boolean): void;
   /**
    * Register attester slashing in order not to consider their votes in `getHead`
    *
@@ -137,6 +148,11 @@ export interface IForkChoice {
    */
   hasBlock(blockRoot: Root): boolean;
   hasBlockHex(blockRoot: RootHex): boolean;
+  /**
+   * Same to hasBlock, but without checking if the block is a descendant of the finalized root.
+   */
+  hasBlockUnsafe(blockRoot: Root): boolean;
+  hasBlockHexUnsafe(blockRoot: RootHex): boolean;
   getSlotsPresent(windowStart: number): number;
   /**
    * Returns a `ProtoBlock` if the block is known **and** a descendant of the finalized root.
@@ -145,10 +161,6 @@ export interface IForkChoice {
   getBlockHex(blockRoot: RootHex): ProtoBlock | null;
   getFinalizedBlock(): ProtoBlock;
   getJustifiedBlock(): ProtoBlock;
-  /**
-   * Return `true` if `block_root` is equal to the finalized root, or a known descendant of it.
-   */
-  isDescendantOfFinalized(blockRoot: RootHex): boolean;
   /**
    * Returns true if the `descendantRoot` has an ancestor with `ancestorRoot`.
    *
@@ -171,6 +183,7 @@ export interface IForkChoice {
    */
   getAllNonAncestorBlocks(blockRoot: RootHex): ProtoBlock[];
   getCanonicalBlockAtSlot(slot: Slot): ProtoBlock | null;
+  getCanonicalBlockClosestLteSlot(slot: Slot): ProtoBlock | null;
   /**
    * Returns all ProtoBlock known to fork-choice. Must not mutated the returned array
    */

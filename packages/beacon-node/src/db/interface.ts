@@ -14,8 +14,8 @@ import {
   SyncCommitteeRepository,
   SyncCommitteeWitnessRepository,
   BackfilledRanges,
-  BlobsSidecarRepository,
-  BlobsSidecarArchiveRepository,
+  BlobSidecarsRepository,
+  BlobSidecarsArchiveRepository,
   BLSToExecutionChangeRepository,
 } from "./repositories/index.js";
 import {PreGenesisState, PreGenesisStateLastProcessedBlock} from "./single/index.js";
@@ -28,11 +28,11 @@ import {PreGenesisState, PreGenesisStateLastProcessedBlock} from "./single/index
 export interface IBeaconDb {
   // unfinalized blocks
   block: BlockRepository;
-  blobsSidecar: BlobsSidecarRepository;
-
   // finalized blocks
   blockArchive: BlockArchiveRepository;
-  blobsSidecarArchive: BlobsSidecarArchiveRepository;
+
+  blobSidecars: BlobSidecarsRepository;
+  blobSidecarsArchive: BlobSidecarsArchiveRepository;
 
   // finalized states
   stateArchive: StateArchiveRepository;
@@ -62,10 +62,8 @@ export interface IBeaconDb {
 
   pruneHotDb(): Promise<void>;
 
-  /** Start the connection to the db instance and open the db store. */
-  start(): Promise<void>;
-  /**  Stop the connection to the db instance and close the db store. */
-  stop(): Promise<void>;
+  /**  Close the connection to the db instance and close the db store. */
+  close(): Promise<void>;
   /** To inject metrics after CLI initialization */
   setMetrics(metrics: LevelDbControllerMetrics): void;
 }

@@ -3,24 +3,23 @@
 Lodestar has the ability to send client stats to a remote service for collection.
 At the moment, the main service offering remote monitoring is [beaconcha.in](https://beaconcha.in/).
 
-Instructions for setting up client monitoring with *beaconcha.in* can be found in their docs about
+Instructions for setting up client monitoring with _beaconcha.in_ can be found in their docs about
 [Mobile App <> Node Monitoring](https://kb.beaconcha.in/beaconcha.in-explorer/mobile-app-less-than-greater-than-beacon-node)
 and in your [account settings](https://beaconcha.in/user/settings#app).
 
 ## Configuration
 
-Lodestar provides CLI options to configure monitoring on both the beacon node and validator client.
+Lodestar provides CLI options to configure monitoring on both the beacon node **and** validator client.
 
 ### Remote endpoint URL
 
 Client monitoring can be enabled by setting the `--monitoring.endpoint` flag to a remote service endpoint URL.
-As monitoring relies on metrics data, it is required that metrics are also enabled by supplying the `--metrics` flag.
 
 ```bash
-lodestar beacon --monitoring.endpoint "https://beaconcha.in/api/v1/client/metrics?apikey={apikey}&machine={machineName}" --metrics
+--monitoring.endpoint "https://beaconcha.in/api/v1/client/metrics?apikey={apikey}&machine={machineName}"
 ```
 
-In case of *beaconcha.in*, the API key can be found in your [account settings](https://beaconcha.in/user/settings#api).
+In case of _beaconcha.in_, the API key can be found in your [account settings](https://beaconcha.in/user/settings#api).
 Setting the machine is optional but it is especially useful if you are monitoring multiple nodes.
 
 <!-- prettier-ignore-start -->
@@ -45,7 +44,7 @@ It takes an integer value in milliseconds, the default is `60000` which means da
 For example, setting an interval of `300000` would mean the data is only sent every 5 minutes.
 
 ```bash
-lodestar beacon --monitoring.interval 300000
+--monitoring.interval 300000
 ```
 
 Increasing the monitoring interval can be useful if you are running into rate limit errors when posting large amounts of data for multiple nodes.

@@ -1,5 +1,5 @@
 import {expect} from "chai";
-import {PeerId} from "@libp2p/interface-peer-id";
+import {PeerId} from "@libp2p/interface/peer-id";
 import {createSecp256k1PeerId} from "@libp2p/peer-id-factory";
 import {BitArray} from "@chainsafe/ssz";
 import {ATTESTATION_SUBNET_COUNT} from "@lodestar/params";
@@ -284,7 +284,7 @@ describe("sortPeersToPrune", async function () {
       syncnetsTrueBitIndices: p.syncnets?.getTrueBitIndexes() ?? [],
     }));
 
-    const dutiesByPeer = new Map<typeof connectedPeers[0], number>([
+    const dutiesByPeer = new Map<(typeof connectedPeers)[0], number>([
       [connectedPeers[0], 2],
       [connectedPeers[1], 0],
       [connectedPeers[2], 0],

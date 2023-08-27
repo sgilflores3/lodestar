@@ -1,7 +1,7 @@
+import {toHexString} from "@chainsafe/ssz";
 import {Epoch, RootHex, Slot} from "@lodestar/types";
 import {computeEpochAtSlot, computeStartSlotAtEpoch} from "@lodestar/state-transition";
 import {GENESIS_EPOCH} from "@lodestar/params";
-import {toHexString} from "@chainsafe/ssz";
 
 import {ForkChoiceError, ForkChoiceErrorCode} from "../forkChoice/errors.js";
 import {ProtoBlock, ProtoNode, HEX_ZERO_HASH, ExecutionStatus, LVHExecResponse} from "./interface.js";
@@ -216,24 +216,19 @@ export class ProtoArray {
       bestDescendant: undefined,
     };
 
-    let nodeIndex = this.nodes.length;
+    const nodeIndex = this.nodes.length;
 
     this.indices.set(node.blockRoot, nodeIndex);
     this.nodes.push(node);
 
-    let parentIndex = node.parent;
     // If this node is valid, lets propagate the valid status up the chain
     // and throw error if we counter invalid, as this breaks consensus
-    if (node.executionStatus === ExecutionStatus.Valid && parentIndex !== undefined) {
-      this.propagateValidExecutionStatusByIndex(parentIndex);
-    }
+    if (node.parent !== undefined) {
+      this.maybeUpdateBestChildAndDescendant(node.parent, nodeIndex, currentSlot);
 
-    let n: ProtoNode | undefined = node;
-    while (parentIndex !== undefined) {
-      this.maybeUpdateBestChildAndDescendant(parentIndex, nodeIndex, currentSlot);
-      nodeIndex = parentIndex;
-      n = this.getNodeByIndex(nodeIndex);
-      parentIndex = n?.parent;
+      if (node.executionStatus === ExecutionStatus.Valid) {
+        this.propagateValidExecutionStatusByIndex(node.parent);
+      }
     }
   }
 
@@ -745,10 +740,30 @@ export class ProtoArray {
       correctJustified = node.unrealizedJustifiedEpoch >= previousEpoch && votingSourceEpoch + 2 >= currentEpoch;
     }
 
-    const finalizedSlot = computeStartSlotAtEpoch(this.finalizedEpoch);
-    const correctFinalized =
-      this.finalizedRoot === this.getAncestorOrNull(node.blockRoot, finalizedSlot) || this.finalizedEpoch === 0;
+    const correctFinalized = this.finalizedEpoch === 0 || this.isFinalizedRootOrDescendant(node);
     return correctJustified && correctFinalized;
+  }
+
+  /**
+   * Return `true` if `node` is equal to or a descendant of the finalized node.
+   * This function helps improve performance of nodeIsViableForHead a lot by avoiding
+   * the loop inside `getAncestors`.
+   */
+  isFinalizedRootOrDescendant(node: ProtoNode): boolean {
+    // The finalized and justified checkpoints represent a list of known
+    // ancestors of `node` that are likely to coincide with the store's
+    // finalized checkpoint.
+    if (
+      (node.finalizedEpoch === this.finalizedEpoch && node.finalizedRoot === this.finalizedRoot) ||
+      (node.justifiedEpoch === this.finalizedEpoch && node.justifiedRoot === this.finalizedRoot) ||
+      (node.unrealizedFinalizedEpoch === this.finalizedEpoch && node.unrealizedFinalizedRoot === this.finalizedRoot) ||
+      (node.unrealizedJustifiedEpoch === this.finalizedEpoch && node.unrealizedJustifiedRoot === this.finalizedRoot)
+    ) {
+      return true;
+    }
+
+    const finalizedSlot = computeStartSlotAtEpoch(this.finalizedEpoch);
+    return this.finalizedEpoch === 0 || this.finalizedRoot === this.getAncestorOrNull(node.blockRoot, finalizedSlot);
   }
 
   /**

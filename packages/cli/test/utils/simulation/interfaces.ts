@@ -7,6 +7,7 @@ import {ChainConfig, ChainForkConfig} from "@lodestar/config";
 import {ForkName} from "@lodestar/params";
 import {Slot, allForks, Epoch} from "@lodestar/types";
 import {BeaconArgs} from "../../../src/cmds/beacon/options.js";
+import {IValidatorCliArgs} from "../../../src/cmds/validator/options.js";
 import {GlobalArgs} from "../../../src/options/index.js";
 import {EpochClock} from "./EpochClock.js";
 import {Eth1ProviderWithAdmin} from "./Eth1ProviderWithAdmin.js";
@@ -24,77 +25,119 @@ export type SimulationOptions = {
   logsDir: string;
   rootDir: string;
   controller: AbortController;
-  genesisTime: number;
+  elGenesisTime: number;
 };
 
-export enum CLClient {
-  Lodestar = "lodestar",
-  Lighthouse = "lighthouse",
+export enum BeaconClient {
+  Lodestar = "beacon_loadstar",
+  Lighthouse = "beacon_lighthouse",
 }
 
-export enum ELClient {
-  Mock = "mock",
-  Geth = "geth",
-  Nethermind = "nethermind",
+export enum ValidatorClient {
+  Lodestar = "validator_loadstar",
+  Lighthouse = "validator_lighthouse",
 }
 
-export enum ELStartMode {
+export enum ExecutionClient {
+  Mock = "execution_mock",
+  Geth = "execution_geth",
+  Nethermind = "execution_nethermind",
+}
+
+export enum ExecutionStartMode {
   PreMerge = "pre-merge",
   PostMerge = "post-merge",
 }
 
-export type CLClientsOptions = {
-  [CLClient.Lodestar]: Partial<BeaconArgs & GlobalArgs>;
-  [CLClient.Lighthouse]: Record<string, unknown>;
+export type BeaconClientsOptions = {
+  [BeaconClient.Lodestar]: Partial<BeaconArgs & GlobalArgs>;
+  [BeaconClient.Lighthouse]: Record<string, unknown>;
 };
 
-export type ELClientsOptions = {
-  [ELClient.Mock]: string[];
-  [ELClient.Geth]: string[];
-  [ELClient.Nethermind]: string[];
+export type ValidatorClientsOptions = {
+  [ValidatorClient.Lodestar]: Partial<IValidatorCliArgs & GlobalArgs>;
+  [ValidatorClient.Lighthouse]: Record<string, unknown>;
 };
 
-export interface NodePairOptions<C extends CLClient = CLClient, E extends ELClient = ELClient> {
+export type ExecutionClientsOptions = {
+  [ExecutionClient.Mock]: string[];
+  [ExecutionClient.Geth]: string[];
+  [ExecutionClient.Nethermind]: string[];
+};
+
+export type ExecutionNodeDefinition<E extends ExecutionClient> =
+  | E
+  | {type: E; options: Partial<ExecutionGenesisOptions<E>>};
+export type BeaconNodeDefinition<E extends BeaconClient> = E | {type: E; options: Partial<BeaconGeneratorOptions<E>>};
+export type ValidatorNodeDefinition<E extends ValidatorClient> =
+  | E
+  | {type: E; options: Partial<ValidatorGeneratorOptions<E>>};
+
+export interface NodePairDefinition<
+  B extends BeaconClient = BeaconClient,
+  E extends ExecutionClient = ExecutionClient,
+  V extends ValidatorClient = ValidatorClient,
+> {
   keysCount: number;
   remote?: boolean;
   mining?: boolean;
   id: string;
-  cl: C | {type: C; options: Partial<CLClientGeneratorOptions<C>>};
-  el: E | {type: E; options: Partial<ELGeneratorGenesisOptions<E>>};
+  beacon: BeaconNodeDefinition<B>;
+  execution: ExecutionNodeDefinition<E>;
+  validator?: ValidatorNodeDefinition<V>;
 }
 
-export type CLClientKeys =
+export type ValidatorClientKeys =
   | {type: "local"; secretKeys: SecretKey[]}
   | {type: "remote"; secretKeys: SecretKey[]}
   | {type: "no-keys"};
 
-export interface CLClientGeneratorOptions<C extends CLClient = CLClient> {
+export interface GeneratorOptions {
   id: string;
   nodeIndex: number;
-  paths: CLPaths;
   address: string;
-  config: ChainForkConfig;
-  keys: CLClientKeys;
+  forkConfig: ChainForkConfig;
   genesisTime: number;
+  runner: IRunner;
+}
+
+export interface BeaconGeneratorOptions<C extends BeaconClient = BeaconClient> extends GeneratorOptions {
+  paths: BeaconPaths;
   engineUrls: string[];
   engineMock: boolean;
-  clientOptions: CLClientsOptions[C];
+  clientOptions: BeaconClientsOptions[C];
+  metrics?: {
+    host: string;
+    port: number;
+  };
 }
 
-export interface ELGeneratorGenesisOptions<E extends ELClient = ELClient> {
+export interface ValidatorGeneratorOptions<V extends ValidatorClient = ValidatorClient> extends GeneratorOptions {
+  paths: ValidatorPaths;
+  keys: ValidatorClientKeys;
+  beaconUrls: string[];
+  clientOptions: ValidatorClientsOptions[V];
+  metrics?: {
+    host: string;
+    port: number;
+  };
+}
+
+export interface ExecutionGenesisOptions<E extends ExecutionClient = ExecutionClient> {
   ttd: bigint;
   cliqueSealingPeriod: number;
-  clientOptions: ELClientsOptions[E];
+  shanghaiTime: number;
+  genesisTime: number;
+  clientOptions: ExecutionClientsOptions[E];
 }
 
-export interface ELGeneratorClientOptions<E extends ELClient = ELClient> extends ELGeneratorGenesisOptions {
-  mode: ELStartMode;
-  nodeIndex: number;
-  id: string;
-  address: string;
+export interface ExecutionGeneratorOptions<E extends ExecutionClient = ExecutionClient>
+  extends ExecutionGenesisOptions<E>,
+    GeneratorOptions {
+  mode: ExecutionStartMode;
   mining: boolean;
-  paths: ELPaths;
-  clientOptions: ELClientsOptions[E];
+  paths: ExecutionPaths;
+  clientOptions: ExecutionClientsOptions[E];
 }
 
 export type LodestarAPI = Api;
@@ -120,35 +163,73 @@ export type LighthouseAPI = Omit<Api, "lodestar"> & {
   };
 };
 
-export interface CLNode<C extends CLClient = CLClient> {
+export interface BeaconNode<C extends BeaconClient = BeaconClient> {
   readonly client: C;
   readonly id: string;
-  readonly url: string;
-  readonly api: C extends CLClient.Lodestar ? LodestarAPI : LighthouseAPI;
-  readonly keyManager: KeyManagerApi;
-  readonly keys: CLClientKeys;
+  /**
+   * Beacon Node Rest API URL accessible form the host machine if the process is running in private network inside docker
+   */
+  readonly restPublicUrl: string;
+  /**
+   * Beacon Node Rest API URL accessible within private network
+   */
+  readonly restPrivateUrl: string;
+  readonly api: C extends BeaconClient.Lodestar ? LodestarAPI : LighthouseAPI;
   readonly job: Job;
 }
 
-export interface ELNode<E extends ELClient = ELClient> {
+export interface ValidatorNode<C extends ValidatorClient = ValidatorClient> {
+  readonly client: C;
+  readonly id: string;
+  readonly keyManager: KeyManagerApi;
+  readonly keys: ValidatorClientKeys;
+  readonly job: Job;
+}
+
+export interface ExecutionNode<E extends ExecutionClient = ExecutionClient> {
   readonly client: E;
   readonly id: string;
   readonly ttd: bigint;
-  readonly engineRpcUrl: string;
-  readonly ethRpcUrl: string;
+  /**
+   * Engine URL accessible form the host machine if the process is running in private network inside docker
+   */
+  readonly engineRpcPublicUrl: string;
+  /**
+   * Engine URL accessible within private network inside docker
+   */
+  readonly engineRpcPrivateUrl: string;
+  /**
+   * RPC URL accessible form the host machine if the process is running in private network inside docker
+   */
+  readonly ethRpcPublicUrl: string;
+  /**
+   * RPC URL accessible within private network inside docker
+   */
+  readonly ethRpcPrivateUrl: string;
   readonly jwtSecretHex: string;
-  readonly provider: E extends ELClient.Mock ? null : Eth1ProviderWithAdmin;
+  readonly provider: E extends ExecutionClient.Mock ? null : Eth1ProviderWithAdmin;
   readonly job: Job;
 }
 
 export interface NodePair {
   readonly id: string;
-  readonly cl: CLNode;
-  readonly el: ELNode;
+  readonly beacon: BeaconNode;
+  readonly execution: ExecutionNode;
+  readonly validator?: ValidatorNode;
 }
 
-export type CLClientGenerator<C extends CLClient> = (opts: CLClientGeneratorOptions<C>, runner: IRunner) => CLNode;
-export type ELClientGenerator<E extends ELClient> = (opts: ELGeneratorClientOptions<E>, runner: IRunner) => ELNode;
+export type BeaconNodeGenerator<C extends BeaconClient> = (
+  opts: BeaconGeneratorOptions<C>,
+  runner: IRunner
+) => BeaconNode;
+export type ValidatorNodeGenerator<C extends ValidatorClient> = (
+  opts: ValidatorGeneratorOptions<C>,
+  runner: IRunner
+) => ValidatorNode;
+export type ExecutionNodeGenerator<E extends ExecutionClient> = (
+  opts: ExecutionGeneratorOptions<E>,
+  runner: IRunner
+) => ExecutionNode;
 
 export type HealthStatus = {ok: true} | {ok: false; reason: string; checkId: string};
 
@@ -224,36 +305,45 @@ export type RunnerEvent = "starting" | "started" | "stopping" | "stop";
 
 export type AtLeast<T, K extends keyof T> = Partial<T> & Pick<T, K>;
 
-export type SimulationCaptureInput<T, D extends Record<string, unknown> = Record<string, never>> = {
+export interface AssertionInput {
   fork: ForkName;
+  forkConfig: ChainForkConfig;
   slot: Slot;
   epoch: Epoch;
-  block: allForks.SignedBeaconBlock;
   clock: EpochClock;
   node: NodePair;
-  store: Record<Slot, T>;
-  forkConfig: ChainForkConfig;
-  dependantStores: D;
-};
+}
 
-export type SimulationAssertionInput<T, D extends Record<string, unknown> = Record<string, never>> = {
-  slot: Slot;
-  epoch: Epoch;
-  clock: EpochClock;
+export interface SimulationCaptureInput<D extends Record<string, unknown>> extends AssertionInput {
+  block: allForks.SignedBeaconBlock;
+  dependantStores: D;
+}
+
+export interface SimulationAssertionInput<T, D extends Record<string, unknown> = Record<string, never>>
+  extends AssertionInput {
   nodes: NodePair[];
-  store: Record<NodeId, Record<Slot, T>>;
+  store: Record<Slot, T>;
   dependantStores: D;
-  forkConfig: ChainForkConfig;
-};
+}
 
-export type SimulationMatcherInput = {
-  slot: Slot;
-  epoch: Epoch;
-  clock: EpochClock;
-  forkConfig: ChainForkConfig;
-};
+export type SimulationMatcherInput = AssertionInput;
 
-export type AssertionMatcher = (input: SimulationMatcherInput) => boolean | {match: boolean; remove: boolean};
+/**
+ * Bitwise flag to indicate what to do with the assertion
+ * 1. Capture the assertion
+ * 2. Assert the assertion
+ * 3. Remove the assertion
+ *
+ * @example
+ * Capture and assert: `AssertionMatch.Capture | AssertionMatch.Assert`
+ */
+export enum AssertionMatch {
+  None = 0,
+  Capture = 1 << 0,
+  Assert = 1 << 1,
+  Remove = 1 << 2,
+}
+export type AssertionMatcher = (input: SimulationMatcherInput) => AssertionMatch;
 export type ExtractAssertionType<T, I> = T extends SimulationAssertion<infer A, infer B>
   ? A extends I
     ? B
@@ -265,24 +355,32 @@ export type StoreType<AssertionId extends string, Value = unknown> = Record<
   Record<NodeId, Record<Slot, Value>>
 >;
 export type StoreTypes<T extends SimulationAssertion[], IDs extends string = ExtractAssertionId<T[number]>> = {
-  [Id in IDs]: Record<NodeId, Record<Slot, ExtractAssertionType<T[number], Id>>>;
+  [Id in IDs]: Record<NodeId, Record<Slot, ExtractAssertionType<T[number], Id> | undefined>>;
 };
 export interface SimulationAssertion<
   IdType extends string = string,
   ValueType = unknown,
-  Dependencies extends SimulationAssertion[] = SimulationAssertion<string, unknown, any[]>[]
+  Dependencies extends SimulationAssertion[] = SimulationAssertion<string, unknown, any[]>[],
 > {
   readonly id: IdType;
-  capture?(input: SimulationCaptureInput<ValueType, StoreTypes<Dependencies>>): Promise<ValueType | null>;
+  capture?(
+    input: SimulationCaptureInput<StoreTypes<Dependencies> & StoreType<IdType, ValueType>>
+  ): Promise<ValueType | null>;
   match: AssertionMatcher;
-  assert(input: SimulationAssertionInput<ValueType, StoreTypes<Dependencies>>): Promise<string[] | null | never>;
+  assert(
+    input: SimulationAssertionInput<ValueType, StoreTypes<Dependencies> & StoreType<IdType, ValueType>>
+  ): Promise<AssertionResult[] | never>;
   dependencies?: Dependencies;
 }
+export type AssertionResult = string | [string, Record<string, unknown>];
+
 export interface SimulationAssertionError {
   slot: Slot;
   epoch: Epoch;
   assertionId: string;
+  nodeId: string;
   message: string;
+  data?: Record<string, unknown>;
 }
 export type ChildProcessWithJobOptions = {jobOptions: JobOptions; childProcess: ChildProcess};
 
@@ -310,28 +408,29 @@ export abstract class SimulationReporter<T extends SimulationAssertion[]> {
   abstract summary(): void;
 }
 
-export interface CLPaths {
+export interface CommonPaths {
   rootDir: string;
   dataDir: string;
-  genesisFilePath: string;
   jwtsecretFilePath: string;
-  validatorsDir: string;
+  logFilePath: string;
+}
+
+export interface BeaconPaths extends CommonPaths {
+  genesisFilePath: string;
+}
+
+export interface ValidatorPaths extends CommonPaths {
   keystoresDir: string;
   keystoresSecretsDir: string;
   keystoresSecretFilePath: string;
+  validatorsDir: string;
   validatorsDefinitionFilePath: string;
-  logFilePath: string;
 }
 
-export interface ELPaths {
-  rootDir: string;
-  dataDir: string;
+export interface ExecutionPaths extends CommonPaths {
   genesisFilePath: string;
-  jwtsecretFilePath: string;
-  logFilePath: string;
 }
 
-export type MountedPaths<T> = T &
-  {
-    [P in keyof T as `${string & P}Mounted`]: T[P];
-  };
+export type MountedPaths<T> = T & {
+  [P in keyof T as `${string & P}Mounted`]: T[P];
+};

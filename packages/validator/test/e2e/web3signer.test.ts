@@ -4,13 +4,13 @@ import tmp from "tmp";
 import {expect} from "chai";
 import {GenericContainer, Wait, StartedTestContainer} from "testcontainers";
 import {Keystore} from "@chainsafe/bls-keystore";
+import bls from "@chainsafe/bls";
 import {fromHex, toHex} from "@lodestar/utils";
 import {config} from "@lodestar/config/default";
 import {computeStartSlotAtEpoch} from "@lodestar/state-transition";
 import {createBeaconConfig} from "@lodestar/config";
 import {genesisData} from "@lodestar/config/networks";
 import {getClient, routes} from "@lodestar/api";
-import bls from "@chainsafe/bls";
 import {ssz} from "@lodestar/types";
 import {ForkSeq} from "@lodestar/params";
 import {Interchange, ISlashingProtection, Signer, SignerType, ValidatorStore} from "../../src/index.js";
@@ -84,7 +84,7 @@ describe("web3signer signature test", function () {
     // using the latest image to be alerted in case there is a breaking change
     startedContainer = await new GenericContainer(`consensys/web3signer:${web3signerVersion}`)
       .withHealthCheck({
-        test: `curl -f http://localhost:${port}/healthcheck || exit 1`,
+        test: ["CMD-SHELL", `curl -f http://localhost:${port}/healthcheck || exit 1`],
         interval: 1000,
         timeout: 3000,
         retries: 5,
@@ -92,8 +92,8 @@ describe("web3signer signature test", function () {
       })
       .withWaitStrategy(Wait.forHealthCheck())
       .withExposedPorts(port)
-      .withBindMount(configDirPathHost, configDirPathContainer, "ro")
-      .withCmd([
+      .withBindMounts([{source: configDirPathHost, target: configDirPathContainer, mode: "ro"}])
+      .withCommand([
         "eth2",
         `--keystores-path=${configDirPathContainer}`,
         // Don't use path.join here, the container is running on unix filesystem

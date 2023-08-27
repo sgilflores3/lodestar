@@ -10,6 +10,10 @@ export {
   HttpError,
   ApiError,
   Metrics,
+  FetchError,
+  isFetchError,
+  fetch,
 } from "./utils/client/index.js";
+export * from "./utils/routes.js";
 
 // NOTE: Don't export server here so it's not bundled to all consumers

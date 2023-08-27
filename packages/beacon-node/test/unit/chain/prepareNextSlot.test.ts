@@ -2,16 +2,16 @@ import {expect} from "chai";
 import sinon, {SinonStubbedInstance} from "sinon";
 import {config} from "@lodestar/config/default";
 import {ForkChoice, ProtoBlock} from "@lodestar/fork-choice";
-import {WinstonLogger} from "@lodestar/utils";
 import {ForkName, SLOTS_PER_EPOCH} from "@lodestar/params";
 import {ChainForkConfig} from "@lodestar/config";
 import {routes} from "@lodestar/api";
+import {LoggerNode} from "@lodestar/logger/node";
 import {BeaconChain, ChainEventEmitter} from "../../../src/chain/index.js";
 import {IBeaconChain} from "../../../src/chain/interface.js";
 import {IChainOptions} from "../../../src/chain/options.js";
-import {LocalClock} from "../../../src/chain/clock/index.js";
+import {Clock} from "../../../src/util/clock.js";
 import {PrepareNextSlotScheduler} from "../../../src/chain/prepareNextSlot.js";
-import {StateRegenerator} from "../../../src/chain/regen/index.js";
+import {QueuedStateRegenerator} from "../../../src/chain/regen/index.js";
 import {SinonStubFn} from "../../utils/types.js";
 import {generateCachedBellatrixState} from "../../utils/state.js";
 import {BeaconProposerCache} from "../../../src/chain/beaconProposerCache.js";
@@ -19,7 +19,8 @@ import {PayloadIdCache} from "../../../src/execution/engine/payloadIdCache.js";
 import {ExecutionEngineHttp} from "../../../src/execution/engine/http.js";
 import {IExecutionEngine} from "../../../src/execution/engine/interface.js";
 import {StubbedChainMutable} from "../../utils/stub/index.js";
-import {zeroProtoBlock} from "../../utils/mocks/chain/chain.js";
+import {zeroProtoBlock} from "../../utils/mocks/chain.js";
+import {createStubbedLogger} from "../../utils/mocks/logger.js";
 
 type StubbedChain = StubbedChainMutable<"clock" | "forkChoice" | "emitter" | "regen" | "opts">;
 
@@ -30,10 +31,10 @@ describe("PrepareNextSlot scheduler", () => {
   let chainStub: StubbedChain;
   let scheduler: PrepareNextSlotScheduler;
   let forkChoiceStub: SinonStubbedInstance<ForkChoice> & ForkChoice;
-  let regenStub: SinonStubbedInstance<StateRegenerator> & StateRegenerator;
-  let loggerStub: SinonStubbedInstance<WinstonLogger> & WinstonLogger;
+  let regenStub: SinonStubbedInstance<QueuedStateRegenerator> & QueuedStateRegenerator;
+  let loggerStub: SinonStubbedInstance<LoggerNode> & LoggerNode;
   let beaconProposerCacheStub: SinonStubbedInstance<BeaconProposerCache> & BeaconProposerCache;
-  let getForkStub: SinonStubFn<typeof config["getForkName"]>;
+  let getForkStub: SinonStubFn<(typeof config)["getForkName"]>;
   let updateBuilderStatus: SinonStubFn<IBeaconChain["updateBuilderStatus"]>;
   let executionEngineStub: SinonStubbedInstance<ExecutionEngineHttp> & ExecutionEngineHttp;
   const emitPayloadAttributes = true;
@@ -42,27 +43,26 @@ describe("PrepareNextSlot scheduler", () => {
     sandbox.useFakeTimers();
     chainStub = sandbox.createStubInstance(BeaconChain) as StubbedChain;
     updateBuilderStatus = chainStub.updateBuilderStatus;
-    const clockStub = sandbox.createStubInstance(LocalClock) as SinonStubbedInstance<LocalClock> & LocalClock;
+    const clockStub = sandbox.createStubInstance(Clock) as SinonStubbedInstance<Clock> & Clock;
     chainStub.clock = clockStub;
     forkChoiceStub = sandbox.createStubInstance(ForkChoice) as SinonStubbedInstance<ForkChoice> & ForkChoice;
     chainStub.forkChoice = forkChoiceStub;
     const emitter = new ChainEventEmitter();
     chainStub.emitter = emitter;
-    regenStub = sandbox.createStubInstance(StateRegenerator) as SinonStubbedInstance<StateRegenerator> &
-      StateRegenerator;
+    regenStub = sandbox.createStubInstance(QueuedStateRegenerator) as SinonStubbedInstance<QueuedStateRegenerator> &
+      QueuedStateRegenerator;
     chainStub.regen = regenStub;
-    loggerStub = sandbox.createStubInstance(WinstonLogger) as SinonStubbedInstance<WinstonLogger> & WinstonLogger;
+    loggerStub = createStubbedLogger(sandbox);
     beaconProposerCacheStub = sandbox.createStubInstance(
       BeaconProposerCache
     ) as SinonStubbedInstance<BeaconProposerCache> & BeaconProposerCache;
-    ((chainStub as unknown) as {beaconProposerCache: BeaconProposerCache})[
-      "beaconProposerCache"
-    ] = beaconProposerCacheStub;
+    (chainStub as unknown as {beaconProposerCache: BeaconProposerCache})["beaconProposerCache"] =
+      beaconProposerCacheStub;
     getForkStub = sandbox.stub(config, "getForkName");
     executionEngineStub = sandbox.createStubInstance(ExecutionEngineHttp) as SinonStubbedInstance<ExecutionEngineHttp> &
       ExecutionEngineHttp;
-    ((chainStub as unknown) as {executionEngine: IExecutionEngine}).executionEngine = executionEngineStub;
-    ((chainStub as unknown) as {config: ChainForkConfig}).config = (config as unknown) as ChainForkConfig;
+    (chainStub as unknown as {executionEngine: IExecutionEngine}).executionEngine = executionEngineStub;
+    (chainStub as unknown as {config: ChainForkConfig}).config = config as unknown as ChainForkConfig;
     chainStub.opts = {emitPayloadAttributes} as IChainOptions;
 
     scheduler = new PrepareNextSlotScheduler(chainStub, config, null, loggerStub, abortController.signal);
@@ -151,7 +151,7 @@ describe("PrepareNextSlot scheduler", () => {
     sinon.stub(state.epochCtx, "getBeaconProposer").returns(proposerIndex);
     regenStub.getBlockSlotState.resolves(state);
     beaconProposerCacheStub.get.returns("0x fee recipient address");
-    ((executionEngineStub as unknown) as {payloadIdCache: PayloadIdCache}).payloadIdCache = new PayloadIdCache();
+    (executionEngineStub as unknown as {payloadIdCache: PayloadIdCache}).payloadIdCache = new PayloadIdCache();
 
     await Promise.all([
       scheduler.prepareForNextSlot(SLOTS_PER_EPOCH - 2),

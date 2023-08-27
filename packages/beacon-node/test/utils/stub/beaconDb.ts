@@ -14,8 +14,8 @@ import {
   StateArchiveRepository,
   VoluntaryExitRepository,
   BLSToExecutionChangeRepository,
-  BlobsSidecarRepository,
-  BlobsSidecarArchiveRepository,
+  BlobSidecarsRepository,
+  BlobSidecarsArchiveRepository,
 } from "../../../src/db/repositories/index.js";
 import {createStubInstance} from "../types.js";
 
@@ -25,8 +25,8 @@ export class StubbedBeaconDb extends BeaconDb {
   block: SinonStubbedInstance<BlockRepository> & BlockRepository;
   blockArchive: SinonStubbedInstance<BlockArchiveRepository> & BlockArchiveRepository;
 
-  blobsSidecar: SinonStubbedInstance<BlobsSidecarRepository> & BlobsSidecarRepository;
-  blobsSidecarArchive: SinonStubbedInstance<BlobsSidecarArchiveRepository> & BlobsSidecarArchiveRepository;
+  blobSidecars: SinonStubbedInstance<BlobSidecarsRepository> & BlobSidecarsRepository;
+  blobSidecarsArchive: SinonStubbedInstance<BlobSidecarsArchiveRepository> & BlobSidecarsArchiveRepository;
 
   stateArchive: SinonStubbedInstance<StateArchiveRepository> & StateArchiveRepository;
 
@@ -41,7 +41,7 @@ export class StubbedBeaconDb extends BeaconDb {
 
   constructor(config = minimalConfig) {
     // eslint-disable-next-line
-    super({config, controller: {} as any});
+    super(config, {} as any);
     this.block = createStubInstance(BlockRepository);
     this.blockArchive = createStubInstance(BlockArchiveRepository);
     this.stateArchive = createStubInstance(StateArchiveRepository);
@@ -54,7 +54,8 @@ export class StubbedBeaconDb extends BeaconDb {
 
     this.depositDataRoot = createStubInstance(DepositDataRootRepository);
     this.eth1Data = createStubInstance(Eth1DataRepository);
-    this.blobsSidecar = createStubInstance(BlobsSidecarRepository);
-    this.blobsSidecarArchive = createStubInstance(BlobsSidecarArchiveRepository);
+
+    this.blobSidecars = createStubInstance(BlobSidecarsRepository);
+    this.blobSidecarsArchive = createStubInstance(BlobSidecarsArchiveRepository);
   }
 }

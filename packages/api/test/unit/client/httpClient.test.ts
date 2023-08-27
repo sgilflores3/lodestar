@@ -5,6 +5,8 @@ import {ErrorAborted, TimeoutError} from "@lodestar/utils";
 import {HttpClient, HttpError} from "../../../src/utils/client/index.js";
 import {HttpStatusCode} from "../../../src/utils/client/httpStatusCode.js";
 
+/* eslint-disable @typescript-eslint/return-await */
+
 type User = {
   id?: number;
   name: string;
@@ -32,7 +34,7 @@ describe("httpClient json client", () => {
       await server.close();
     });
 
-    return {baseUrl: await server.listen(0)};
+    return {baseUrl: await server.listen({port: 0})};
   }
 
   async function getServerWithClient(opts: RouteOptions): Promise<HttpClient> {
@@ -131,6 +133,22 @@ describe("httpClient json client", () => {
       expect(e.message).to.equal("Service Unavailable: Node is syncing");
       expect(e.status).to.equal(503, "Wrong error status code");
     }
+  });
+
+  it("should set user credentials in URL as Authorization header", async () => {
+    const {baseUrl} = await getServer({
+      ...testRoute,
+      handler: async (req) => {
+        expect(req.headers.authorization).to.equal("Basic dXNlcjpwYXNzd29yZA==");
+        return {};
+      },
+    });
+    const url = new URL(baseUrl);
+    url.username = "user";
+    url.password = "password";
+    const httpClient = new HttpClient({baseUrl: url.toString()});
+
+    await httpClient.json(testRoute);
   });
 
   it("should handle aborting request with timeout", async () => {

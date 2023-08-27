@@ -1,7 +1,7 @@
 import qs from "qs";
-import fastify, {FastifyError, FastifyInstance} from "fastify";
-import fastifyCors from "fastify-cors";
-import bearerAuthPlugin from "fastify-bearer-auth";
+import fastify, {FastifyInstance} from "fastify";
+import fastifyCors from "@fastify/cors";
+import bearerAuthPlugin from "@fastify/bearer-auth";
 import {RouteConfig} from "@lodestar/api/beacon/server";
 import {ErrorAborted, Logger} from "@lodestar/utils";
 import {isLocalhostIP} from "../../util/ip.js";
@@ -14,6 +14,7 @@ export type RestApiServerOpts = {
   cors?: string;
   address?: string;
   bearerToken?: string;
+  headerLimit?: number;
   bodyLimit?: number;
 };
 
@@ -36,7 +37,10 @@ export class RestApiServer {
   protected readonly logger: Logger;
   private readonly activeSockets: HttpActiveSocketsTracker;
 
-  constructor(private readonly opts: RestApiServerOpts, modules: RestApiServerModules) {
+  constructor(
+    private readonly opts: RestApiServerOpts,
+    modules: RestApiServerModules
+  ) {
     // Apply opts defaults
     const {logger, metrics} = modules;
 
@@ -53,14 +57,15 @@ export class RestApiServer {
           parseArrays: false,
         }),
       bodyLimit: opts.bodyLimit,
+      http: {maxHeaderSize: opts.headerLimit},
     });
 
     this.activeSockets = new HttpActiveSocketsTracker(server.server, metrics);
 
     // To parse our ApiError -> statusCode
     server.setErrorHandler((err, req, res) => {
-      if ((err as FastifyError).validation) {
-        void res.status(400).send((err as FastifyError).validation);
+      if (err.validation) {
+        void res.status(400).send(err.validation);
       } else {
         // Convert our custom ApiError into status code
         const statusCode = err instanceof ApiError ? err.statusCode : 500;
@@ -78,30 +83,30 @@ export class RestApiServer {
 
     // Log all incoming request to debug (before parsing). TODO: Should we hook latter in the lifecycle? https://www.fastify.io/docs/latest/Lifecycle/
     // Note: Must be an async method so fastify can continue the release lifecycle. Otherwise we must call done() or the request stalls
-    server.addHook("onRequest", async (req, res) => {
-      const {operationId} = res.context.config as RouteConfig;
-      this.logger.debug(`Req ${req.id} ${req.ip} ${operationId}`);
+    server.addHook("onRequest", async (req, _res) => {
+      const {operationId} = req.routeConfig as RouteConfig;
+      this.logger.debug(`Req ${req.id as string} ${req.ip} ${operationId}`);
       metrics?.requests.inc({operationId});
     });
 
     // Log after response
     server.addHook("onResponse", async (req, res) => {
-      const {operationId} = res.context.config as RouteConfig;
-      this.logger.debug(`Res ${req.id} ${operationId} - ${res.raw.statusCode}`);
+      const {operationId} = req.routeConfig as RouteConfig;
+      this.logger.debug(`Res ${req.id as string} ${operationId} - ${res.raw.statusCode}`);
       metrics?.responseTime.observe({operationId}, res.getResponseTime() / 1000);
     });
 
-    server.addHook("onError", async (req, res, err) => {
+    server.addHook("onError", async (req, _res, err) => {
       // Don't log ErrorAborted errors, they happen on node shutdown and are not useful
       // Don't log NodeISSyncing errors, they happen very frequently while syncing and the validator polls duties
       if (err instanceof ErrorAborted || err instanceof NodeIsSyncing) return;
 
-      const {operationId} = res.context.config as RouteConfig;
+      const {operationId} = req.routeConfig as RouteConfig;
 
       if (err instanceof ApiError) {
-        this.logger.warn(`Req ${req.id} ${operationId} failed`, {reason: err.message});
+        this.logger.warn(`Req ${req.id as string} ${operationId} failed`, {reason: err.message});
       } else {
-        this.logger.error(`Req ${req.id} ${operationId} error`, {}, err);
+        this.logger.error(`Req ${req.id as string} ${operationId} error`, {}, err);
       }
       metrics?.errors.inc({operationId});
     });
@@ -116,7 +121,7 @@ export class RestApiServer {
   async listen(): Promise<void> {
     try {
       const host = this.opts.address;
-      const address = await this.server.listen(this.opts.port, host);
+      const address = await this.server.listen({port: this.opts.port, host});
       this.logger.info("Started REST API server", {address});
       if (!host || !isLocalhostIP(host)) {
         this.logger.warn("REST API server is exposed, ensure untrusted traffic cannot reach this API");
@@ -133,12 +138,14 @@ export class RestApiServer {
   async close(): Promise<void> {
     // In NodeJS land calling close() only causes new connections to be rejected.
     // Existing connections can prevent .close() from resolving for potentially forever.
-    // In Lodestar case when the BeaconNode wants to close we will just abruptly terminate
-    // all existing connections for a fast shutdown.
+    // In Lodestar case when the BeaconNode wants to close we will attempt to gracefully
+    // close all existing connections but forcefully terminate after timeout for a fast shutdown.
     // Inspired by https://github.com/gajus/http-terminator/
-    this.activeSockets.destroyAll();
+    await this.activeSockets.terminate();
 
     await this.server.close();
+
+    this.logger.debug("REST API server closed");
   }
 
   /** For child classes to override */

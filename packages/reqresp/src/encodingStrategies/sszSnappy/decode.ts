@@ -1,7 +1,7 @@
-import varint from "varint";
+import {decode as varintDecode, encodingLength as varintEncodingLength} from "uint8-varint";
 import {Uint8ArrayList} from "uint8arraylist";
 import {BufferedSource} from "../../utils/index.js";
-import {TypeSerializer} from "../../types.js";
+import {TypeSizes} from "../../types.js";
 import {SnappyFramesUncompress} from "./snappyFrames/uncompress.js";
 import {maxEncodedLen} from "./utils.js";
 import {SszSnappyError, SszSnappyErrorCode} from "./errors.js";
@@ -15,44 +15,33 @@ export const MAX_VARINT_BYTES = 10;
  * <encoding-dependent-header> | <encoded-payload>
  * ```
  */
-export async function readSszSnappyPayload<T>(bufferedSource: BufferedSource, type: TypeSerializer<T>): Promise<T> {
+export async function readSszSnappyPayload(bufferedSource: BufferedSource, type: TypeSizes): Promise<Uint8Array> {
   const sszDataLength = await readSszSnappyHeader(bufferedSource, type);
 
-  const bytes = await readSszSnappyBody(bufferedSource, sszDataLength);
-  return deserializeSszBody<T>(bytes, type);
+  return readSszSnappyBody(bufferedSource, sszDataLength);
 }
 
 /**
  * Reads `<encoding-dependent-header>` for ssz-snappy.
  * encoding-header ::= the length of the raw SSZ bytes, encoded as an unsigned protobuf varint
  */
-export async function readSszSnappyHeader(
-  bufferedSource: BufferedSource,
-  type: Pick<TypeSerializer<unknown>, "minSize" | "maxSize">
-): Promise<number> {
+export async function readSszSnappyHeader(bufferedSource: BufferedSource, type: TypeSizes): Promise<number> {
   for await (const buffer of bufferedSource) {
     // Get next bytes if empty
     if (buffer.length === 0) {
       continue;
     }
 
-    // Use Number.MAX_SAFE_INTEGER to guard against this check https://github.com/chrisdickinson/varint/pull/20
-    // On varint v6 if the number is > Number.MAX_SAFE_INTEGER `varint.decode` throws.
-    // Since MAX_VARINT_BYTES = 10, this will always be the case for the condition below.
-    // The check for MAX_VARINT_BYTES is kept for completeness
     let sszDataLength: number;
     try {
-      sszDataLength = varint.decode(buffer.slice());
+      sszDataLength = varintDecode(buffer.subarray());
     } catch (e) {
       throw new SszSnappyError({code: SszSnappyErrorCode.INVALID_VARINT_BYTES_COUNT, bytes: Infinity});
     }
 
     // MUST validate: the unsigned protobuf varint used for the length-prefix MUST not be longer than 10 bytes
-    // Check for varintBytes > 0 to guard against NaN, or 0 values
-    const varintBytes = varint.decode.bytes;
-    if (varintBytes > MAX_VARINT_BYTES || !(varintBytes > 0)) {
-      throw new SszSnappyError({code: SszSnappyErrorCode.INVALID_VARINT_BYTES_COUNT, bytes: varintBytes});
-    }
+    // encodingLength function only returns 1-8 inclusive
+    const varintBytes = varintEncodingLength(sszDataLength);
     buffer.consume(varintBytes);
 
     // MUST validate: the length-prefix is within the expected size bounds derived from the payload SSZ type.
@@ -119,16 +108,4 @@ export async function readSszSnappyBody(bufferedSource: BufferedSource, sszDataL
 
   // SHOULD consider invalid: An early EOF before fully reading the declared length-prefix worth of SSZ bytes
   throw new SszSnappyError({code: SszSnappyErrorCode.SOURCE_ABORTED});
-}
-
-/**
- * Deseralizes SSZ body.
- * `isSszTree` option allows the SignedBeaconBlock type to be deserialized as a tree
- */
-function deserializeSszBody<T>(bytes: Uint8Array, type: TypeSerializer<T>): T {
-  try {
-    return type.deserialize(bytes);
-  } catch (e) {
-    throw new SszSnappyError({code: SszSnappyErrorCode.DESERIALIZE_ERROR, deserializeError: e as Error});
-  }
 }

@@ -9,6 +9,7 @@ import {
 import {ssz as primitiveSsz} from "../primitive/index.js";
 import {ssz as phase0Ssz} from "../phase0/index.js";
 import {ssz as altairSsz} from "../altair/index.js";
+import {stringType} from "../utils/StringType.js";
 
 const {
   Bytes32,
@@ -50,17 +51,12 @@ export const CommonExecutionPayloadType = new ContainerType({
   // TODO: if there is perf issue, consider making ByteListType
   extraData: new ByteListType(MAX_EXTRA_DATA_BYTES),
   baseFeePerGas: Uint256,
-});
-
-const executionPayloadFields = {
-  ...CommonExecutionPayloadType.fields,
-  // Extra payload fields
   blockHash: Root,
-};
+});
 
 export const ExecutionPayload = new ContainerType(
   {
-    ...executionPayloadFields,
+    ...CommonExecutionPayloadType.fields,
     transactions: Transactions,
   },
   {typeName: "ExecutionPayload", jsonCase: "eth2"}
@@ -68,7 +64,7 @@ export const ExecutionPayload = new ContainerType(
 
 export const ExecutionPayloadHeader = new ContainerType(
   {
-    ...executionPayloadFields,
+    ...CommonExecutionPayloadType.fields,
     transactionsRoot: Root,
   },
   {typeName: "ExecutionPayloadHeader", jsonCase: "eth2"}
@@ -218,7 +214,7 @@ export const SignedBuilderBid = new ContainerType(
 
 // PayloadAttributes primarily for SSE event
 export const PayloadAttributes = new ContainerType(
-  {timestamp: UintNum64, prevRandao: Bytes32, suggestedFeeRecipient: ExecutionAddress},
+  {timestamp: UintNum64, prevRandao: Bytes32, suggestedFeeRecipient: stringType},
   {typeName: "PayloadAttributes", jsonCase: "eth2"}
 );
 

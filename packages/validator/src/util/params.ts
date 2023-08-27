@@ -128,10 +128,6 @@ function getSpecCriticalParams(localConfig: ChainConfig): Record<keyof ConfigWit
     DEPOSIT_NETWORK_ID: false, // Non-critical
     DEPOSIT_CONTRACT_ADDRESS: true,
 
-    // Blobs
-    MAX_REQUEST_BLOBS_SIDECARS: denebForkRelevant,
-    MIN_EPOCHS_FOR_BLOBS_SIDECARS_REQUESTS: denebForkRelevant,
-
     // # Phase0Preset
     /////////////////
 
@@ -212,5 +208,6 @@ function getSpecCriticalParams(localConfig: ChainConfig): Record<keyof ConfigWit
     /////////////////
     FIELD_ELEMENTS_PER_BLOB: denebForkRelevant,
     MAX_BLOBS_PER_BLOCK: denebForkRelevant,
+    MAX_BLOB_COMMITMENTS_PER_BLOCK: denebForkRelevant,
   };
 }

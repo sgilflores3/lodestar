@@ -1,7 +1,7 @@
-import {fetch} from "cross-fetch";
-import {ErrorAborted, Logger, TimeoutError} from "@lodestar/utils";
+import {ErrorAborted, Logger, TimeoutError, isValidHttpUrl, toBase64} from "@lodestar/utils";
 import {ReqGeneric, RouteDef} from "../index.js";
 import {ApiClientResponse, ApiClientSuccessResponse} from "../../interfaces.js";
+import {fetch, isFetchError} from "./fetch.js";
 import {stringifyQuery, urlJoin} from "./format.js";
 import {Metrics} from "./metrics.js";
 import {HttpStatusCode} from "./httpStatusCode.js";
@@ -54,6 +54,7 @@ export interface URLOpts {
   baseUrl: string;
   timeoutMs?: number;
   bearerToken?: string;
+  extraHeaders?: Record<string, string>;
 }
 
 export type FetchOpts = {
@@ -77,6 +78,7 @@ export interface IHttpClient {
 export type HttpClientOptions = ({baseUrl: string} | {urls: (string | URLOpts)[]}) & {
   timeoutMs?: number;
   bearerToken?: string;
+  extraHeaders?: Record<string, string>;
   /** Return an AbortSignal to be attached to all requests */
   getAbortSignal?: () => AbortSignal | undefined;
   /** Override fetch function */
@@ -93,6 +95,7 @@ export {Metrics};
 export class HttpClient implements IHttpClient {
   private readonly globalTimeoutMs: number;
   private readonly globalBearerToken: string | null;
+  private readonly globalExtraHeaders: Record<string, string> | null;
   private readonly getAbortSignal?: () => AbortSignal | undefined;
   private readonly fetch: typeof fetch;
   private readonly metrics: null | Metrics;
@@ -116,11 +119,19 @@ export class HttpClient implements IHttpClient {
     const allUrlOpts: Partial<URLOpts> = {};
     if (opts.bearerToken) allUrlOpts.bearerToken = opts.bearerToken;
     if (opts.timeoutMs !== undefined) allUrlOpts.timeoutMs = opts.timeoutMs;
+    if (opts.extraHeaders) allUrlOpts.extraHeaders = opts.extraHeaders;
 
     // opts.baseUrl is equivalent to `urls: [{baseUrl}]`
     // unshift opts.baseUrl to urls, without mutating opts.urls
-    for (const urlOrOpts of [...(baseUrl ? [baseUrl] : []), ...urls]) {
+    for (const [i, urlOrOpts] of [...(baseUrl ? [baseUrl] : []), ...urls].entries()) {
       const urlOpts: URLOpts = typeof urlOrOpts === "string" ? {baseUrl: urlOrOpts, ...allUrlOpts} : urlOrOpts;
+
+      if (!urlOpts.baseUrl) {
+        throw Error(`HttpClient.urls[${i}] is empty or undefined: ${urlOpts.baseUrl}`);
+      }
+      if (!isValidHttpUrl(urlOpts.baseUrl)) {
+        throw Error(`HttpClient.urls[${i}] must be a valid URL: ${urlOpts.baseUrl}`);
+      }
       // De-duplicate by baseUrl, having two baseUrls with different token or timeouts does not make sense
       if (!this.urlsOpts.some((opt) => opt.baseUrl === urlOpts.baseUrl)) {
         this.urlsOpts.push(urlOpts);
@@ -136,6 +147,7 @@ export class HttpClient implements IHttpClient {
 
     this.globalTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.globalBearerToken = opts.bearerToken ?? null;
+    this.globalExtraHeaders = opts.extraHeaders ?? null;
     this.getAbortSignal = opts.getAbortSignal;
     this.fetch = opts.fetch ?? fetch;
     this.metrics = metrics ?? null;
@@ -248,6 +260,7 @@ export class HttpClient implements IHttpClient {
   ): Promise<{status: HttpStatusCode; body: T}> {
     const baseUrl = urlOpts.baseUrl;
     const bearerToken = urlOpts.bearerToken ?? this.globalBearerToken;
+    const extraHeaders = urlOpts.extraHeaders ?? this.globalExtraHeaders;
     const timeoutMs = opts.timeoutMs ?? urlOpts.timeoutMs ?? this.globalTimeoutMs;
 
     // Implement fetch timeout
@@ -255,7 +268,7 @@ export class HttpClient implements IHttpClient {
     const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? timeoutMs ?? this.globalTimeoutMs);
 
     // Attach global signal to this request's controller
-    const onGlobalSignalAbort = controller.abort.bind(controller);
+    const onGlobalSignalAbort = (): void => controller.abort();
     const signalGlobal = this.getAbortSignal?.();
     signalGlobal?.addEventListener("abort", onGlobalSignalAbort);
 
@@ -263,14 +276,23 @@ export class HttpClient implements IHttpClient {
     const timer = this.metrics?.requestTime.startTimer({routeId});
 
     try {
-      const url = urlJoin(baseUrl, opts.url) + (opts.query ? "?" + stringifyQuery(opts.query) : "");
+      const url = new URL(urlJoin(baseUrl, opts.url) + (opts.query ? "?" + stringifyQuery(opts.query) : ""));
 
-      const headers = opts.headers || {};
+      const headers =
+        extraHeaders && opts.headers ? {...extraHeaders, ...opts.headers} : opts.headers || extraHeaders || {};
       if (opts.body && headers["Content-Type"] === undefined) {
         headers["Content-Type"] = "application/json";
       }
       if (bearerToken && headers["Authorization"] === undefined) {
         headers["Authorization"] = `Bearer ${bearerToken}`;
+      }
+      if (url.username || url.password) {
+        if (headers["Authorization"] === undefined) {
+          headers["Authorization"] = `Basic ${toBase64(`${url.username}:${url.password}`)}`;
+        }
+        // Remove the username and password from the URL
+        url.username = "";
+        url.password = "";
       }
 
       this.logger?.debug("HttpClient request", {routeId});
@@ -284,7 +306,7 @@ export class HttpClient implements IHttpClient {
 
       if (!res.ok) {
         const errBody = await res.text();
-        throw new HttpError(`${res.statusText}: ${getErrorMessage(errBody)}`, res.status, url);
+        throw new HttpError(`${res.statusText}: ${getErrorMessage(errBody)}`, res.status, url.toString());
       }
 
       const streamTimer = this.metrics?.streamTime.startTimer({routeId});
@@ -316,7 +338,7 @@ export class HttpClient implements IHttpClient {
 }
 
 function isAbortedError(e: Error): boolean {
-  return e.name === "AbortError" || e.message === "The user aborted a request";
+  return isFetchError(e) && e.type === "aborted";
 }
 
 function getErrorMessage(errBody: string): string {

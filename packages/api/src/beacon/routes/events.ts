@@ -1,5 +1,5 @@
-import {Epoch, phase0, capella, Slot, ssz, StringType, RootHex, altair, UintNum64, allForks} from "@lodestar/types";
 import {ContainerType} from "@chainsafe/ssz";
+import {Epoch, phase0, capella, Slot, ssz, StringType, RootHex, altair, UintNum64, allForks} from "@lodestar/types";
 import {ChainForkConfig} from "@lodestar/config";
 import {isForkExecution, ForkName} from "@lodestar/params";
 
@@ -193,35 +193,35 @@ export function getTypeByEvent(config: ChainForkConfig): {[K in EventType]: Type
 
     [EventType.lightClientOptimisticUpdate]: {
       toJson: (data) =>
-        getLightClientTypeFromHeader(((data as unknown) as allForks.LightClientOptimisticUpdate).attestedHeader)[
+        getLightClientTypeFromHeader((data as unknown as allForks.LightClientOptimisticUpdate).attestedHeader)[
           "LightClientOptimisticUpdate"
         ].toJson(data),
       fromJson: (data) =>
         getLightClientTypeFromHeader(
           // eslint-disable-next-line @typescript-eslint/naming-convention
-          ((data as unknown) as {attested_header: allForks.LightClientHeader}).attested_header
+          (data as {attested_header: allForks.LightClientHeader}).attested_header
         )["LightClientOptimisticUpdate"].fromJson(data),
     },
     [EventType.lightClientFinalityUpdate]: {
       toJson: (data) =>
-        getLightClientTypeFromHeader(((data as unknown) as allForks.LightClientFinalityUpdate).attestedHeader)[
+        getLightClientTypeFromHeader((data as unknown as allForks.LightClientFinalityUpdate).attestedHeader)[
           "LightClientFinalityUpdate"
         ].toJson(data),
       fromJson: (data) =>
         getLightClientTypeFromHeader(
           // eslint-disable-next-line @typescript-eslint/naming-convention
-          ((data as unknown) as {attested_header: allForks.LightClientHeader}).attested_header
+          (data as {attested_header: allForks.LightClientHeader}).attested_header
         )["LightClientFinalityUpdate"].fromJson(data),
     },
     [EventType.lightClientUpdate]: {
       toJson: (data) =>
-        getLightClientTypeFromHeader(((data as unknown) as allForks.LightClientUpdate).attestedHeader)[
+        getLightClientTypeFromHeader((data as unknown as allForks.LightClientUpdate).attestedHeader)[
           "LightClientUpdate"
         ].toJson(data),
       fromJson: (data) =>
         getLightClientTypeFromHeader(
           // eslint-disable-next-line @typescript-eslint/naming-convention
-          ((data as unknown) as {attested_header: allForks.LightClientHeader}).attested_header
+          (data as {attested_header: allForks.LightClientHeader}).attested_header
         )["LightClientUpdate"].fromJson(data),
     },
   };

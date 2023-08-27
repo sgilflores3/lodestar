@@ -83,7 +83,7 @@ export const allForksExecution = {
     ExecutionPayloadHeader: deneb.ExecutionPayloadHeader,
     BuilderBid: deneb.BuilderBid,
     SignedBuilderBid: deneb.SignedBuilderBid,
-    SSEPayloadAttributes: capella.SSEPayloadAttributes,
+    SSEPayloadAttributes: deneb.SSEPayloadAttributes,
   },
 };
 
@@ -154,6 +154,8 @@ export const allForksLightClient = {
 
 export const allForksBlobs = {
   deneb: {
-    SignedBeaconBlockAndBlobsSidecar: deneb.SignedBeaconBlockAndBlobsSidecar,
+    SignedBeaconBlockAndBlobSidecars: deneb.SignedBeaconBlockAndBlobSidecars,
+    BlobSidecar: deneb.BlobSidecar,
+    BlindedBlobSidecar: deneb.BlindedBlobSidecar,
   },
 };
